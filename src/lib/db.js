@@ -12,32 +12,38 @@ if (!fs.existsSync(dbDir)) {
 const db = new sqlite3.Database(DB_PATH);
 
 function initDB() {
-  db.serialize(() => {
-    db.run(`
-      CREATE TABLE IF NOT EXISTS job_queue (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company TEXT NOT NULL,
-        title TEXT NOT NULL,
-        location TEXT,
-        post_date TEXT,
-        source TEXT,
-        url TEXT,
-        jd_text TEXT,
-        score INTEGER DEFAULT 0,
-        tier TEXT DEFAULT 'B',
-        status TEXT DEFAULT 'inbox',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS preferences (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        rules_json TEXT NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS job_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company TEXT NOT NULL,
+          title TEXT NOT NULL,
+          location TEXT,
+          post_date TEXT,
+          source TEXT,
+          url TEXT,
+          jd_text TEXT,
+          score INTEGER DEFAULT 0,
+          tier TEXT DEFAULT 'B',
+          status TEXT DEFAULT 'inbox',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) return reject(err);
+        db.run(`
+          CREATE TABLE IF NOT EXISTS preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rules_json TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err2) => {
+          if (err2) return reject(err2);
+          resolve();
+        });
+      });
+    });
   });
 }
 

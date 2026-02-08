@@ -56,6 +56,7 @@ router.post('/:id/status', (req, res) => {
 
 async function syncToPersonalDashboard(jobId) {
   const { db: pdDB } = require('../lib/pd');
+  const { sendWebhook } = require('../lib/webhook');
 
   return new Promise((resolve, reject) => {
     db.get('SELECT * FROM job_queue WHERE id = ?', [jobId], (err, row) => {
@@ -64,6 +65,19 @@ async function syncToPersonalDashboard(jobId) {
 
       const notes = `Auto-synced from Job Engine. Tier ${row.tier}. Score ${row.score}. Source: ${row.source || 'unknown'}.`;
 
+      // Webhook (preferred)
+      sendWebhook({
+        company: row.company,
+        position: row.title,
+        status: 'applied',
+        location: row.location || null,
+        applied_date: new Date().toISOString().slice(0, 10),
+        notes,
+        url: row.url || null,
+        external_id: row.id
+      }).catch(() => {});
+
+      // DB fallback (local integration)
       pdDB.run(
         `INSERT INTO job_applications (company, position, status, location, applied_date, notes, url)
          VALUES (?, ?, 'applied', ?, date('now'), ?, ?)`,

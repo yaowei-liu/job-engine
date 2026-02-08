@@ -7,7 +7,7 @@ Personal job search engine for Jason.
 - Preference-based scoring (systems/backend preferred; SDE/full-stack acceptable)
 - 24h/7d freshness filters
 - One-click approve/skip
-- Sync to personal dashboard (job_applications) via PD_DB_PATH
+- Sync to personal dashboard (webhook preferred; DB fallback)
 
 ## Roadmap
 See `docs/PLAN.md`.
