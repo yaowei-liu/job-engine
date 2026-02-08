@@ -1,0 +1,14 @@
+{
+  "name": "job-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal job search engine",
+  "scripts": {
+    "dev": "node src/index.js",
+    "lint": "echo 'lint placeholder'"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7"
+  }
+}
