@@ -3,6 +3,8 @@ const { db } = require('../lib/db');
 const { scoreJD } = require('../lib/score');
 const { fetchGreenhouseJobs } = require('../lib/sources/greenhouse');
 const { fetchSerpJobs } = require('../lib/sources/serpapi');
+const { fetchTextFromUrl } = require('../lib/fetchText');
+const { scoreWithGemini } = require('../lib/llm/gemini');
 
 const router = express.Router();
 
@@ -113,6 +115,43 @@ router.post('/:id/status', (req, res) => {
     }
 
     res.json({ updated: this.changes });
+  });
+});
+
+// LLM rerank (Gemini)
+router.post('/:id/rerank', async (req, res) => {
+  const { id } = req.params;
+  const { model } = req.body || {};
+
+  db.get('SELECT * FROM job_queue WHERE id = ?', [id], async (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: 'not found' });
+
+    let jd = row.jd_text || '';
+    if (!jd && row.url) {
+      jd = await fetchTextFromUrl(row.url);
+    }
+
+    if (!jd) return res.status(400).json({ error: 'no jd text' });
+
+    try {
+      const result = await scoreWithGemini(jd, model || 'gemini-1.5-pro');
+      const score = result.score || 0;
+      const tier = result.tier || 'B';
+      const reasons = JSON.stringify(result.reasons || []);
+      const negatives = JSON.stringify(result.negatives || []);
+
+      db.run(
+        'UPDATE job_queue SET llm_score = ?, llm_tier = ?, llm_reasons = ?, llm_negatives = ?, llm_model = ?, llm_updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [score, tier, reasons, negatives, model || 'gemini-1.5-pro', id],
+        function (uErr) {
+          if (uErr) return res.status(500).json({ error: uErr.message });
+          res.json({ ok: true, score, tier, reasons: result.reasons || [], negatives: result.negatives || [] });
+        }
+      );
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 });
 

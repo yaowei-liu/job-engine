@@ -27,20 +27,37 @@ function initDB() {
           score INTEGER DEFAULT 0,
           tier TEXT DEFAULT 'B',
           status TEXT DEFAULT 'inbox',
+          llm_score INTEGER,
+          llm_tier TEXT,
+          llm_reasons TEXT,
+          llm_negatives TEXT,
+          llm_model TEXT,
+          llm_updated_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `, (err) => {
         if (err) return reject(err);
-        db.run(`
-          CREATE TABLE IF NOT EXISTS preferences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            rules_json TEXT NOT NULL,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `, (err2) => {
-          if (err2) return reject(err2);
-          resolve();
+
+        const addCol = (sql) => new Promise((res) => db.run(sql, () => res()));
+        Promise.all([
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_score INTEGER'),
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_tier TEXT'),
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_reasons TEXT'),
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_negatives TEXT'),
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_model TEXT'),
+          addCol('ALTER TABLE job_queue ADD COLUMN llm_updated_at DATETIME')
+        ]).finally(() => {
+          db.run(`
+            CREATE TABLE IF NOT EXISTS preferences (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              rules_json TEXT NOT NULL,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `, (err2) => {
+            if (err2) return reject(err2);
+            resolve();
+          });
         });
       });
     });
