@@ -1,7 +1,7 @@
 # Architecture (MVP)
 
 ## Modules
-- **Ingestion**: source adapters (Greenhouse/Lever/Ashby, manual LinkedIn capture)
+- **Ingestion**: source adapters (Greenhouse v1, Lever/Ashby later, manual LinkedIn capture)
 - **Normalizer**: unify fields -> job_queue
 - **Rule Engine**: keyword weights + freshness; tiers A/B
 - **Workflow**: inbox -> approve/skip -> sync to personal dashboard

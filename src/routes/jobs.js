@@ -1,10 +1,11 @@
 const express = require('express');
 const { db } = require('../lib/db');
 const { scoreJD } = require('../lib/score');
+const { fetchGreenhouseJobs } = require('../lib/sources/greenhouse');
 
 const router = express.Router();
 
-// Ingest a job (stub)
+// Ingest a job (manual)
 router.post('/ingest', (req, res) => {
   const { company, title, location, post_date, source, url, jd_text } = req.body || {};
   if (!company || !title) return res.status(400).json({ error: 'company and title required' });
@@ -19,6 +20,35 @@ router.post('/ingest', (req, res) => {
       res.json({ id: this.lastID, score, tier, hits });
     }
   );
+});
+
+// Ingest from Greenhouse by board token (company slug)
+router.post('/ingest/greenhouse', async (req, res) => {
+  const { board } = req.body || {};
+  if (!board) return res.status(400).json({ error: 'board is required' });
+
+  try {
+    const jobs = await fetchGreenhouseJobs(board);
+    let inserted = 0;
+    for (const job of jobs) {
+      const { score, tier } = scoreJD(job.content || '', job.updated_at || job.created_at);
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox')`,
+          [job.company_name || board, job.title, (job.location && job.location.name) || null, job.updated_at || job.created_at || null, 'greenhouse', job.absolute_url || null, job.content || null, score, tier],
+          function (err) {
+            if (err) return reject(err);
+            inserted += 1;
+            resolve();
+          }
+        );
+      });
+    }
+    res.json({ ok: true, inserted });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // List jobs
