@@ -10,4 +10,4 @@
 1. Fetch JD -> normalize -> score
 2. Save to `job_queue`
 3. Approve/skip in UI
-4. Approved jobs synced to `personal-dashboard` job_applications
+4. Approved jobs synced to `personal-dashboard` job_applications (via PD_DB_PATH)

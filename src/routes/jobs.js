@@ -44,8 +44,38 @@ router.post('/:id/status', (req, res) => {
 
   db.run('UPDATE job_queue SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
+
+    if (status === 'approved') {
+      // Fire-and-forget sync to personal dashboard
+      syncToPersonalDashboard(id).catch(() => {});
+    }
+
     res.json({ updated: this.changes });
   });
 });
+
+async function syncToPersonalDashboard(jobId) {
+  const { db: pdDB } = require('../lib/pd');
+
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM job_queue WHERE id = ?', [jobId], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve();
+
+      const notes = `Auto-synced from Job Engine. Tier ${row.tier}. Score ${row.score}. Source: ${row.source || 'unknown'}.`;
+
+      pdDB.run(
+        `INSERT INTO job_applications (company, position, status, location, applied_date, notes, url)
+         VALUES (?, ?, 'applied', ?, date('now'), ?, ?)`,
+        [row.company, row.title, row.location || null, notes, row.url || null],
+        function (pdErr) {
+          if (pdErr) return reject(pdErr);
+          resolve();
+        }
+      );
+    });
+  });
+}
+
 
 module.exports = router;
