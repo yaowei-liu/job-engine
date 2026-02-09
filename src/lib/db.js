@@ -163,6 +163,18 @@ function initDB() {
             `);
             await dbRun(`CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id, created_at DESC)`);
             await dbRun(`CREATE INDEX IF NOT EXISTS idx_job_events_run_id ON job_events(run_id)`);
+
+            await dbRun(`
+              CREATE TABLE IF NOT EXISTS serpapi_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER,
+                queries_used INTEGER NOT NULL DEFAULT 0,
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_serpapi_usage_created_at ON serpapi_usage(created_at DESC)`);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_serpapi_usage_run_id ON serpapi_usage(run_id)`);
             resolve();
           } catch (e) {
             reject(e);

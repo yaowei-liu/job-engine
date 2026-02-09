@@ -27,11 +27,19 @@ Open:
 
 ## Configuration
 
+Primary config file: `config/sources.json`.
+
+Precedence:
+- Environment variables override `config/sources.json`
+- `config/sources.json` overrides built-in defaults
+
 ### Core sources
 
 ```bash
 export GREENHOUSE_BOARDS="https://boards.greenhouse.io/company-a,https://boards.greenhouse.io/company-b"
 export LEVER_BOARDS="https://jobs.lever.co/company-a"
+export ASHBY_TARGETS="notion,https://jobs.ashbyhq.com/stripe"
+export WORKDAY_TARGETS="https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"
 
 export SERPAPI_KEY="<your-key>"
 export SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
@@ -43,6 +51,14 @@ export SERPAPI_LOCATION="Toronto, ON, Canada"
 ```bash
 export FETCH_INTERVAL_MIN=15
 export RUN_ON_STARTUP=true
+export SERPAPI_FETCH_INTERVAL_MIN=1440
+export SERPAPI_RUN_ON_STARTUP=false
+export SERPAPI_MONTHLY_QUERY_CAP=250
+export SERPAPI_BUDGET_SAFETY_RESERVE=10
+export SERPAPI_FRESHNESS_HOURS=24
+export SERPAPI_ALLOW_UNKNOWN_POST_DATE=false
+export SOURCE_FRESHNESS_HOURS=24
+export ALLOW_UNKNOWN_POST_DATE=false
 ```
 
 ### Big-tech run (optional)
@@ -83,6 +99,9 @@ export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
 - `POST /api/scheduler/run`
   - Manually trigger core run
   - Returns `{ runId, status, accepted, message, summary }`
+- `POST /api/scheduler/run-serpapi`
+  - Manually trigger SerpAPI-only run (budget-capped)
+  - Returns `{ runId, status, accepted, message, summary }`
 - `GET /api/ingestion/runs?limit=20`
   - List latest ingestion runs
 - `GET /api/scheduler/stats`
@@ -97,3 +116,11 @@ export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
 
 - SerpAPI adapter now lazy-loads SDK so imports/tests do not hard-fail before install.
 - Dedup uses canonical fingerprint first (URL host/path), with fallback composite key.
+
+## Backlog
+
+- Startup search expansion (future):
+  - Add startup-focused source profile separate from big-tech targets.
+  - Evaluate/add YC Jobs (`https://www.ycombinator.com/jobs`) ingestion adapter.
+  - Evaluate/add Wellfound (`https://wellfound.com/`) ingestion adapter.
+  - Add config toggle to run startup profile on its own cadence.

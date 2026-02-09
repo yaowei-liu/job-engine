@@ -116,10 +116,47 @@ function fetchJobs(query, location = DEFAULT_LOCATION) {
 }
 
 async function fetchAll(queries = [], location) {
-  const results = await Promise.all(
-    queries.map((q) => fetchJobs(q, location).catch(() => []))
-  );
-  return results.flat();
+  const out = await fetchAllWithStats(queries, location);
+  return out.jobs;
 }
 
-module.exports = { fetchJobs, fetchAll, normalizePostedAt, pickDirectUrl };
+async function fetchAllWithStats(queries = [], location, options = {}) {
+  const concurrency = Math.min(Math.max(parseInt(options.concurrency || '3', 10), 1), 10);
+  const safeQueries = Array.isArray(queries) ? queries : [];
+  const jobs = [];
+  let index = 0;
+  let failed = 0;
+  let empty = 0;
+  let succeeded = 0;
+
+  const workers = Array.from({ length: Math.min(concurrency, safeQueries.length) }, async () => {
+    while (index < safeQueries.length) {
+      const current = safeQueries[index];
+      index += 1;
+      try {
+        const result = await fetchJobs(current, location);
+        if (!result.length) {
+          empty += 1;
+        } else {
+          succeeded += 1;
+          jobs.push(...result);
+        }
+      } catch {
+        failed += 1;
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  return {
+    jobs,
+    stats: {
+      attempted: safeQueries.length,
+      succeeded,
+      failed,
+      empty,
+    },
+  };
+}
+
+module.exports = { fetchJobs, fetchAll, fetchAllWithStats, normalizePostedAt, pickDirectUrl };
