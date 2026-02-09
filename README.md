@@ -12,7 +12,6 @@ Job Engine ingests jobs from multiple sources, deduplicates them into a single q
 - Optional sync to personal dashboard when job is marked `applied`
 
 ## Quick Start
-
 ```bash
 cd job-engine
 npm install
