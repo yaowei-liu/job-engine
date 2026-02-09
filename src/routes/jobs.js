@@ -185,7 +185,7 @@ router.get('/:id/provenance', async (req, res) => {
 router.post('/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body || {};
-  if (!isValidWorkflowStatus(status)) return res.status(400).json({ error: 'invalid status' });
+  if (!['inbox', 'approved', 'skipped', 'applied'].includes(status)) return res.status(400).json({ error: 'invalid status' });
 
   try {
     const update = await dbRun('UPDATE job_queue SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id]);
