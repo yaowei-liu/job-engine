@@ -1,207 +1,423 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Job Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            border: 'hsl(var(--border))',
-            background: 'hsl(var(--background))',
-            foreground: 'hsl(var(--foreground))',
-            primary: { DEFAULT: '#0ea5e9', foreground: 'white' },
-            muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
-          }
-        }
-      }
-    }
-  </script>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; }
+    body { font-family: "Avenir Next", "Segoe UI", sans-serif; background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%); }
+    .job-selected { outline: 2px solid #0284c7; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen p-6">
-  <div class="max-w-6xl mx-auto">
-    <header class="flex items-center justify-between mb-8">
+<body class="text-slate-900 min-h-screen p-4 md:p-6">
+  <div class="max-w-7xl mx-auto">
+    <header class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-slate-800">🎯 Job Engine</h1>
-        <p class="text-sm text-slate-500">自动化求职筛选系统</p>
+        <h1 class="text-3xl font-semibold tracking-tight">Job Engine</h1>
+        <p class="text-sm text-slate-600">Reliable ingestion, fast decisions. Shortcuts: J/K move, A approve, S skip, L applied.</p>
       </div>
       <div class="flex items-center gap-2">
-        <button id="run-scan" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors">
-          立即扫描
-        </button>
-        <button id="refresh" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-colors">
-          刷新列表
-        </button>
+        <button id="run-scan" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Run Ingestion</button>
+        <button id="refresh" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium">Refresh</button>
       </div>
     </header>
 
-    <div class="grid gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200 md:grid-cols-7">
-      <input id="q" placeholder="搜索公司/岗位" class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-      <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-        <option value="">所有等级</option>
-        <option value="A">Tier A (高匹配)</option>
-        <option value="B">Tier B (中匹配)</option>
-      </select>
-      <select id="status" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-        <option value="">所有状态</option>
-        <option value="inbox">收件箱</option>
-        <option value="approved">已确认</option>
-        <option value="applied">已申请</option>
-        <option value="skipped">已跳过</option>
-      </select>
-      <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-        <option value="">所有来源</option>
-        <option value="greenhouse">Greenhouse</option>
-        <option value="lever">Lever</option>
-        <option value="serpapi">SerpAPI</option>
-      </select>
-      <select id="bigtech" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-        <option value="">全部公司</option>
-        <option value="true">Big Tech</option>
-      </select>
-      <select id="sort" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-        <option value="newest">最新</option>
-        <option value="score">分数最高</option>
-        <option value="company">公司名</option>
-        <option value="oldest">最早</option>
-      </select>
-      <input id="minScore" type="number" placeholder="最低分" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-      <span id="stats" class="md:col-span-7 text-sm text-slate-500"></span>
-    </div>
+    <section class="mb-5 grid gap-3 md:grid-cols-3">
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm md:col-span-2">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">Latest Ingestion Run</h2>
+          <span id="run-status" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">No data</span>
+        </div>
+        <p id="run-summary" class="text-sm text-slate-600 mt-2">Waiting for run data...</p>
+        <p id="run-errors" class="text-xs text-rose-600 mt-1"></p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <h2 class="font-semibold">List Stats</h2>
+        <p id="stats" class="text-sm text-slate-600 mt-2">0 jobs</p>
+        <p id="page-stats" class="text-xs text-slate-500 mt-1">Page 1</p>
+      </div>
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+      <div class="grid gap-3 md:grid-cols-8">
+        <input id="q" placeholder="Search company or title" class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <option value="">All tiers</option>
+          <option value="A">Tier A</option>
+          <option value="B">Tier B</option>
+          <option value="C">Tier C</option>
+        </select>
+        <select id="status" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <option value="">All statuses</option>
+          <option value="inbox">Inbox</option>
+          <option value="approved">Approved</option>
+          <option value="applied">Applied</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <option value="">All sources</option>
+          <option value="greenhouse">Greenhouse</option>
+          <option value="lever">Lever</option>
+          <option value="serpapi">SerpAPI</option>
+          <option value="amazon">Amazon</option>
+        </select>
+        <select id="sort" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <option value="newest">Newest</option>
+          <option value="score">Top score</option>
+          <option value="company">Company A-Z</option>
+          <option value="oldest">Oldest</option>
+        </select>
+        <input id="minScore" type="number" placeholder="Min score" class="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <select id="seenWithinDays" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <option value="">Seen anytime</option>
+          <option value="1">Seen in 1 day</option>
+          <option value="7">Seen in 7 days</option>
+          <option value="30">Seen in 30 days</option>
+        </select>
+      </div>
+      <div class="flex flex-wrap items-center gap-4 mt-3">
+        <label class="text-sm text-slate-700 inline-flex items-center gap-2">
+          <input id="bigtech" type="checkbox" class="rounded" /> Big Tech only
+        </label>
+        <label class="text-sm text-slate-700 inline-flex items-center gap-2">
+          <input id="hasErrors" type="checkbox" class="rounded" /> Show sync errors
+        </label>
+      </div>
+    </section>
+
+    <div id="error-banner" class="hidden mb-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-4 py-2 text-sm"></div>
+    <div id="loading" class="hidden mb-4 text-sm text-slate-600">Loading jobs...</div>
+    <div id="empty" class="hidden mb-4 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">No jobs match current filters.</div>
 
     <div id="list" class="space-y-3"></div>
+
+    <div class="mt-5 flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+      <button id="prev-page" class="px-3 py-1.5 rounded-md border border-slate-300 text-sm disabled:opacity-40">Previous</button>
+      <span id="pagination" class="text-sm text-slate-600">Page 1</span>
+      <button id="next-page" class="px-3 py-1.5 rounded-md border border-slate-300 text-sm disabled:opacity-40">Next</button>
+    </div>
+
+    <section id="provenance" class="mt-6 hidden bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Selected Job Provenance</h2>
+        <button id="close-provenance" class="text-sm text-slate-500 hover:text-slate-700">Close</button>
+      </div>
+      <pre id="provenance-content" class="mt-3 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto"></pre>
+    </section>
   </div>
 
   <script>
-    const list = document.getElementById('list');
-    const tier = document.getElementById('tier');
-    const status = document.getElementById('status');
-    const source = document.getElementById('source');
-    const sort = document.getElementById('sort');
-    const bigtech = document.getElementById('bigtech');
-    const q = document.getElementById('q');
-    const minScore = document.getElementById('minScore');
-    const stats = document.getElementById('stats');
+    const state = {
+      page: 1,
+      pageSize: 20,
+      jobs: [],
+      total: 0,
+      selectedIndex: 0,
+    };
 
-    async function load() {
+    const el = {
+      list: document.getElementById('list'),
+      tier: document.getElementById('tier'),
+      status: document.getElementById('status'),
+      source: document.getElementById('source'),
+      sort: document.getElementById('sort'),
+      bigtech: document.getElementById('bigtech'),
+      hasErrors: document.getElementById('hasErrors'),
+      seenWithinDays: document.getElementById('seenWithinDays'),
+      q: document.getElementById('q'),
+      minScore: document.getElementById('minScore'),
+      stats: document.getElementById('stats'),
+      pageStats: document.getElementById('page-stats'),
+      errorBanner: document.getElementById('error-banner'),
+      loading: document.getElementById('loading'),
+      empty: document.getElementById('empty'),
+      pagination: document.getElementById('pagination'),
+      prevPage: document.getElementById('prev-page'),
+      nextPage: document.getElementById('next-page'),
+      runStatus: document.getElementById('run-status'),
+      runSummary: document.getElementById('run-summary'),
+      runErrors: document.getElementById('run-errors'),
+      provenance: document.getElementById('provenance'),
+      provenanceContent: document.getElementById('provenance-content'),
+    };
+
+    function showError(message) {
+      el.errorBanner.textContent = message;
+      el.errorBanner.classList.remove('hidden');
+    }
+
+    function clearError() {
+      el.errorBanner.classList.add('hidden');
+      el.errorBanner.textContent = '';
+    }
+
+    function applyQueryStateToUrl() {
       const params = new URLSearchParams();
-      if (tier.value) params.set('tier', tier.value);
-      if (status.value) params.set('status', status.value);
-      if (source.value) params.set('source', source.value);
-      if (bigtech.value) params.set('bigtech', bigtech.value);
-      if (sort.value) params.set('sort', sort.value);
-      if (q.value) params.set('q', q.value);
-      if (minScore.value) params.set('minScore', minScore.value);
-      const res = await fetch(`/jobs?${params.toString()}`);
-      const jobs = await res.json();
-      list.innerHTML = '';
+      if (el.tier.value) params.set('tier', el.tier.value);
+      if (el.status.value) params.set('status', el.status.value);
+      if (el.source.value) params.set('source', el.source.value);
+      if (el.sort.value) params.set('sort', el.sort.value);
+      if (el.q.value) params.set('q', el.q.value);
+      if (el.minScore.value) params.set('minScore', el.minScore.value);
+      if (el.seenWithinDays.value) params.set('seenWithinDays', el.seenWithinDays.value);
+      if (el.bigtech.checked) params.set('bigtech', 'true');
+      if (el.hasErrors.checked) params.set('hasErrors', 'true');
+      params.set('page', String(state.page));
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+    }
 
-      const tierColors = {
-        A: 'border-l-emerald-500 bg-emerald-50/50',
-        B: 'border-l-slate-400 bg-slate-50/50',
-      };
+    function restoreQueryStateFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      el.tier.value = params.get('tier') || '';
+      el.status.value = params.get('status') || '';
+      el.source.value = params.get('source') || '';
+      el.sort.value = params.get('sort') || 'newest';
+      el.q.value = params.get('q') || '';
+      el.minScore.value = params.get('minScore') || '';
+      el.seenWithinDays.value = params.get('seenWithinDays') || '';
+      el.bigtech.checked = params.get('bigtech') === 'true';
+      el.hasErrors.checked = params.get('hasErrors') === 'true';
+      state.page = Math.max(parseInt(params.get('page') || '1', 10), 1);
+    }
 
-      const statusBadges = {
+    function renderList() {
+      el.list.innerHTML = '';
+      el.empty.classList.toggle('hidden', state.jobs.length > 0);
+
+      const statusColor = {
         inbox: 'bg-amber-100 text-amber-700',
         approved: 'bg-sky-100 text-sky-700',
         applied: 'bg-emerald-100 text-emerald-700',
         skipped: 'bg-slate-100 text-slate-500',
       };
 
-      stats.textContent = `共 ${jobs.length} 条`;
-
-      jobs.forEach(j => {
-        const div = document.createElement('div');
-        div.className = `job p-4 bg-white rounded-lg shadow-sm border border-slate-200 ${tierColors[j.tier] || tierColors.B} border-l-4`;
+      state.jobs.forEach((job, index) => {
+        const card = document.createElement('article');
+        card.className = `job-card bg-white border border-slate-200 rounded-xl p-4 shadow-sm ${index === state.selectedIndex ? 'job-selected' : ''}`;
+        card.dataset.index = String(index);
         const hits = (() => {
-          try { return j.hits ? JSON.parse(j.hits) : null; } catch { return null; }
+          try { return job.hits ? JSON.parse(job.hits) : []; } catch { return []; }
         })();
-        div.innerHTML = `
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 class="font-semibold text-slate-800 truncate">${j.title}</h3>
-                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusBadges[j.status] || 'bg-slate-100'}">${j.status || 'inbox'}</span>
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-slate-800">${job.title}</h3>
+              <p class="text-sm text-slate-600">${job.company}</p>
+              <div class="mt-2 text-xs text-slate-500 flex flex-wrap gap-2">
+                ${job.location ? `<span>${job.location}</span>` : ''}
+                <span>Score: ${job.score}</span>
+                <span>Tier: ${job.tier}</span>
+                <span>Source: ${job.source || 'unknown'}</span>
+                ${job.years_req ? `<span>${job.years_req}</span>` : ''}
               </div>
-              <p class="text-sm text-slate-600">${j.company}</p>
-              <div class="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
-                ${j.location ? `<span>📍 ${j.location}</span>` : ''}
-                <span>📊 分数: ${j.score}</span>
-                ${j.source ? `<span>🔗 ${j.source}</span>` : ''}
-                ${j.years_req ? `<span>🧮 ${j.years_req}</span>` : ''}
+              <div class="mt-1 text-xs text-slate-500 flex flex-wrap gap-2">
+                <span>First seen: ${job.first_seen_at || '-'}</span>
+                <span>Last seen: ${job.last_seen_at || '-'}</span>
+                <span>Dedup: ${job.dedup_reason || '-'}</span>
               </div>
-              ${hits ? `<div class="mt-2 text-xs text-slate-400">命中: ${hits.join(' · ')}</div>` : ''}
-              ${j.url ? `<a href="${j.url}" target="_blank" class="mt-2 inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">🔗 查看职位 →</a>` : ''}
+              ${hits.length ? `<p class="mt-1 text-xs text-slate-400">Hits: ${hits.join(' | ')}</p>` : ''}
+              ${job.url ? `<a href="${job.url}" target="_blank" class="inline-block mt-2 text-sm text-sky-700 hover:text-sky-900">Open posting</a>` : ''}
             </div>
             <div class="flex flex-col gap-2 shrink-0">
-              <button data-id="${j.id}" data-status="approved" class="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md text-sm font-medium transition-colors">已确认</button>
-              <button data-id="${j.id}" data-status="applied" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-sm font-medium transition-colors">已申请</button>
-              <button data-id="${j.id}" data-status="skipped" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-sm font-medium transition-colors">跳过</button>
-              <button data-company="${j.company}" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md text-sm font-medium transition-colors">忽略公司</button>
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[job.status] || 'bg-slate-100 text-slate-700'}">${job.status || 'inbox'}</span>
+              <button data-action="approved" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-sky-100 text-sky-800 text-sm">Approve</button>
+              <button data-action="applied" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-800 text-sm">Applied</button>
+              <button data-action="skipped" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm">Skip</button>
+              <button data-action="provenance" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-indigo-100 text-indigo-800 text-sm">Provenance</button>
             </div>
           </div>
         `;
-        list.appendChild(div);
+
+        el.list.appendChild(card);
       });
+
+      const totalPages = Math.max(Math.ceil(state.total / state.pageSize), 1);
+      el.pagination.textContent = `Page ${state.page} of ${totalPages}`;
+      el.prevPage.disabled = state.page <= 1;
+      el.nextPage.disabled = state.page >= totalPages;
+      el.pageStats.textContent = `Page ${state.page}, size ${state.pageSize}`;
+      el.stats.textContent = `${state.total} total jobs`;
     }
 
-    list.addEventListener('click', async (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
+    async function loadRuns() {
+      try {
+        const res = await fetch('/api/ingestion/runs?limit=1');
+        if (!res.ok) return;
+        const data = await res.json();
+        const run = data.items?.[0];
+        if (!run) return;
 
-      if (btn.dataset.company) {
-        await fetch('/jobs/company/skip', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company: btn.dataset.company })
-        });
-        load();
-        return;
+        el.runStatus.textContent = run.status;
+        el.runStatus.className = `text-xs px-2 py-1 rounded-full ${run.status === 'success' ? 'bg-emerald-100 text-emerald-700' : run.status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`;
+        const totals = run.summary?.totals || {};
+        el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, failed ${totals.failed || 0}.`;
+        el.runErrors.textContent = run.errorText || '';
+      } catch {
+        // keep silent, job list still usable
       }
+    }
 
-      const id = btn.dataset.id;
-      const newStatus = btn.dataset.status;
-      await fetch(`/jobs/${id}/status`, {
+    async function load() {
+      clearError();
+      el.loading.classList.remove('hidden');
+      applyQueryStateToUrl();
+
+      const params = new URLSearchParams();
+      if (el.tier.value) params.set('tier', el.tier.value);
+      if (el.status.value) params.set('status', el.status.value);
+      if (el.source.value) params.set('source', el.source.value);
+      if (el.sort.value) params.set('sort', el.sort.value);
+      if (el.q.value) params.set('q', el.q.value);
+      if (el.minScore.value) params.set('minScore', el.minScore.value);
+      if (el.seenWithinDays.value) params.set('seenWithinDays', el.seenWithinDays.value);
+      if (el.bigtech.checked) params.set('bigtech', 'true');
+      if (el.hasErrors.checked) params.set('hasErrors', 'true');
+      params.set('page', String(state.page));
+      params.set('pageSize', String(state.pageSize));
+
+      try {
+        const res = await fetch(`/jobs?${params.toString()}`);
+        if (!res.ok) throw new Error(`Failed to load jobs (${res.status})`);
+        const data = await res.json();
+        state.jobs = data.items || [];
+        state.total = data.meta?.total || 0;
+        if (state.selectedIndex >= state.jobs.length) state.selectedIndex = Math.max(0, state.jobs.length - 1);
+        renderList();
+      } catch (err) {
+        showError(err.message || 'Failed to load jobs');
+      } finally {
+        el.loading.classList.add('hidden');
+        loadRuns();
+      }
+    }
+
+    async function updateStatus(id, status) {
+      clearError();
+      const res = await fetch(`/jobs/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showError(err.error || 'Failed to update status');
+        return;
+      }
+      const payload = await res.json();
+      if (payload.syncWarning) {
+        showError(`Status updated, but sync warning: ${payload.syncWarning}`);
+      }
+      load();
+    }
+
+    async function loadProvenance(id) {
+      clearError();
+      try {
+        const res = await fetch(`/jobs/${id}/provenance`);
+        if (!res.ok) throw new Error(`Failed to load provenance (${res.status})`);
+        const data = await res.json();
+        el.provenance.classList.remove('hidden');
+        el.provenanceContent.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        showError(err.message || 'Failed to load provenance');
+      }
+    }
+
+    function selectRelative(offset) {
+      if (!state.jobs.length) return;
+      state.selectedIndex = Math.min(Math.max(state.selectedIndex + offset, 0), state.jobs.length - 1);
+      renderList();
+      const selected = document.querySelector(`.job-card[data-index="${state.selectedIndex}"]`);
+      if (selected) selected.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function selectedJob() {
+      return state.jobs[state.selectedIndex];
+    }
+
+    const triggerReload = () => {
+      state.page = 1;
+      load();
+    };
+
+    el.list.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      const card = event.target.closest('.job-card');
+      if (card) {
+        state.selectedIndex = Number(card.dataset.index || '0');
+        renderList();
+      }
+      if (!button) return;
+      const id = button.dataset.id;
+      const action = button.dataset.action;
+      if (action === 'provenance') return loadProvenance(id);
+      if (action === 'approved' || action === 'applied' || action === 'skipped') {
+        return updateStatus(id, action);
+      }
+    });
+
+    el.prevPage.addEventListener('click', () => {
+      if (state.page <= 1) return;
+      state.page -= 1;
       load();
     });
 
-    tier.addEventListener('change', load);
-    status.addEventListener('change', load);
-    source.addEventListener('change', load);
-    bigtech.addEventListener('change', load);
-    sort.addEventListener('change', load);
-    q.addEventListener('input', () => {
-      clearTimeout(window.__qTimer);
-      window.__qTimer = setTimeout(load, 300);
+    el.nextPage.addEventListener('click', () => {
+      const totalPages = Math.max(Math.ceil(state.total / state.pageSize), 1);
+      if (state.page >= totalPages) return;
+      state.page += 1;
+      load();
     });
-    minScore.addEventListener('input', () => {
-      clearTimeout(window.__sTimer);
-      window.__sTimer = setTimeout(load, 300);
+
+    document.getElementById('close-provenance').addEventListener('click', () => {
+      el.provenance.classList.add('hidden');
     });
-    document.getElementById('refresh').addEventListener('click', load);
+
+    document.getElementById('refresh').addEventListener('click', () => load());
+
     document.getElementById('run-scan').addEventListener('click', async () => {
       const btn = document.getElementById('run-scan');
-      const prev = btn.textContent;
+      const prevText = btn.textContent;
       btn.disabled = true;
-      btn.textContent = '扫描中...';
+      btn.textContent = 'Running...';
+      clearError();
       try {
-        await fetch('/api/scheduler/run', { method: 'POST' });
+        const res = await fetch('/api/scheduler/run', { method: 'POST' });
+        const data = await res.json();
+        if (!data.accepted) {
+          showError(data.message || 'Run already active');
+        }
         await load();
+      } catch (err) {
+        showError(err.message || 'Failed to run ingestion');
       } finally {
         btn.disabled = false;
-        btn.textContent = prev;
+        btn.textContent = prevText;
       }
     });
+
+    [el.tier, el.status, el.source, el.sort, el.minScore, el.seenWithinDays, el.bigtech, el.hasErrors].forEach((node) => {
+      node.addEventListener('change', triggerReload);
+    });
+
+    el.q.addEventListener('input', () => {
+      clearTimeout(window.__qTimer);
+      window.__qTimer = setTimeout(triggerReload, 250);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'j') selectRelative(1);
+      if (key === 'k') selectRelative(-1);
+      if (key === 'a' && selectedJob()) updateStatus(selectedJob().id, 'approved');
+      if (key === 's' && selectedJob()) updateStatus(selectedJob().id, 'skipped');
+      if (key === 'l' && selectedJob()) updateStatus(selectedJob().id, 'applied');
+    });
+
+    restoreQueryStateFromUrl();
     load();
   </script>
 </body>

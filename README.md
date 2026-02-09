@@ -1,48 +1,99 @@
 # Job Engine
 
-Personal job search engine for Jason.
+Job Engine ingests jobs from multiple sources, deduplicates them into a single queue, and provides a fast review UI with provenance and run diagnostics.
 
-## MVP Features
-- **Multi-source ingestion**: Greenhouse boards + SerpAPI (Google Jobs)
-- **Preference-based scoring**: Rule engine weights tech stack, seniority, etc.
-- **24h/7d freshness**: Auto-refresh every 15 minutes
-- **One-click approve/skip**: Web UI with instant feedback
-- **Dashboard sync**: Auto-syncs approved jobs to personal dashboard
+## Features
+
+- Multi-source ingestion: Greenhouse, Lever, SerpAPI (Google Jobs), Amazon
+- Canonical deduplication with fingerprint tracking
+- Ingestion run history and source-level error visibility
+- Provenance for each job (where it came from and when it was seen)
+- Review workflow: inbox -> approved/skipped/applied
+- Optional sync to personal dashboard when job is marked `applied`
 
 ## Quick Start
 
 ```bash
 cd job-engine
-
-# Install deps
 npm install
-
-# Set target companies (optional)
-export GREENHOUSE_BOARDS="https://boards.greenhouse.io/lever,https://boards.greenhouse.io/ashby"
-
-# SerpAPI (Google Jobs)
-export SERPAPI_KEY="<your_key>"
-export SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
-export SERPAPI_LOCATION="Toronto, ON, Canada"
-
-# Run
+npm test
 npm run dev
 ```
 
-## Endpoints
+Open:
 
-- **UI**: http://localhost:3030/
-- **List jobs**: `GET /jobs?tier=A&status=inbox`
-- **Ingest manually**: `POST /jobs/ingest`
-- **Approve/Skip**: `POST /jobs/:id/status`
-- **Trigger fetch**: `POST /api/scheduler/run`
-- **Health**: `GET /health`
+- UI: `http://localhost:3030/`
+- Health: `GET /health`
 
 ## Configuration
 
-Edit `src/lib/rules.default.json` to adjust scoring weights.
-Set `GREENHOUSE_BOARDS` and `SERPAPI_*` env vars to target sources.
+### Core sources
 
-## Architecture
+```bash
+export GREENHOUSE_BOARDS="https://boards.greenhouse.io/company-a,https://boards.greenhouse.io/company-b"
+export LEVER_BOARDS="https://jobs.lever.co/company-a"
 
-See `docs/PLAN.md` and `docs/ARCHITECTURE.md`.
+export SERPAPI_KEY="<your-key>"
+export SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
+export SERPAPI_LOCATION="Toronto, ON, Canada"
+```
+
+### Scheduler
+
+```bash
+export FETCH_INTERVAL_MIN=15
+export RUN_ON_STARTUP=true
+```
+
+### Big-tech run (optional)
+
+```bash
+export BIGTECH_GREENHOUSE_BOARDS="https://boards.greenhouse.io/company-x"
+export BIGTECH_LEVER_BOARDS="https://jobs.lever.co/company-y"
+export BIGTECH_AMAZON_QUERIES="software engineer,new grad"
+export BIGTECH_AMAZON_LOCATIONS="Toronto, ON, Canada,Remote"
+export BIGTECH_FETCH_INTERVAL_MIN=1440
+```
+
+### Personal dashboard sync (optional)
+
+```bash
+export PD_WEBHOOK_URL="https://your-dashboard/webhook"
+export PD_WEBHOOK_TOKEN="<token>"
+export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
+```
+
+## API
+
+### Jobs
+
+- `GET /jobs`
+  - Filters: `tier`, `status`, `source`, `q`, `minScore`, `bigtech=true`, `hasErrors=true`, `seenWithinDays`
+  - Pagination: `page`, `pageSize`
+  - Returns `{ items, meta }`
+  - Legacy mode: `GET /jobs?legacy=true` returns array only
+- `GET /jobs/:id/provenance`
+  - Returns source history + event trail for a job
+- `POST /jobs/:id/status`
+  - Body: `{ "status": "approved" | "skipped" | "applied" }`
+  - Returns updated job snapshot and optional `syncWarning`
+
+### Scheduler / Ingestion
+
+- `POST /api/scheduler/run`
+  - Manually trigger core run
+  - Returns `{ runId, status, accepted, message, summary }`
+- `GET /api/ingestion/runs?limit=20`
+  - List latest ingestion runs
+- `GET /api/scheduler/stats`
+  - Runtime scheduler/config diagnostics
+
+### Diagnostics
+
+- `GET /health`
+  - Includes enabled source counts and missing config hints
+
+## Notes
+
+- SerpAPI adapter now lazy-loads SDK so imports/tests do not hard-fail before install.
+- Dedup uses canonical fingerprint first (URL host/path), with fallback composite key.

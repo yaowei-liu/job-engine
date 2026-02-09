@@ -7,8 +7,6 @@
  *   SERPAPI_LOCATION="Toronto, Ontario, Canada"
  */
 
-const { getJson } = require('serpapi');
-
 const DEFAULT_LOCATION = process.env.SERPAPI_LOCATION || '';
 
 function normalizePostedAt(postedAt) {
@@ -67,6 +65,14 @@ function pickDirectUrl(job) {
 function fetchJobs(query, location = DEFAULT_LOCATION) {
   if (!process.env.SERPAPI_KEY) {
     console.warn('[SerpAPI] Missing SERPAPI_KEY');
+    return Promise.resolve([]);
+  }
+
+  let getJson;
+  try {
+    ({ getJson } = require('serpapi'));
+  } catch {
+    console.warn('[SerpAPI] Missing serpapi package; run npm install');
     return Promise.resolve([]);
   }
 
