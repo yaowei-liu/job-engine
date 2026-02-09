@@ -2,6 +2,10 @@
   "tiers": {
     "A": {
       "keywords": {
+        "junior": 20,
+        "entry level": 20,
+        "new grad": 20,
+        "0-2 years": 15,
         "backend": 15,
         "systems": 12,
         "distributed": 12,
@@ -19,7 +23,9 @@
         "software engineer": 6,
         "full stack": 5,
         "sde": 5,
-        "backend": 4
+        "backend": 4,
+        "intern": 6,
+        "graduate": 6
       }
     }
   },
@@ -29,9 +35,14 @@
     "data pipeline": 8,
     "etl": 8,
     "contract": 6,
-    "senior": 6,
-    "lead": 6,
-    "5+ years": 6
+    "senior": 50,
+    "lead": 50,
+    "staff": 50,
+    "principal": 50,
+    "manager": 40,
+    "5+ years": 40,
+    "8+ years": 50,
+    "10+ years": 60
   },
   "freshness": {
     "hours24": 20,
