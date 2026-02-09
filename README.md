@@ -1,48 +1,63 @@
 # Job Engine
 
-Personal job search engine for Jason.
+Job Engine is a lightweight job aggregation service that pulls postings from multiple sources, scores them against your preferences, and provides a minimal UI to review and triage.
 
-## MVP Features
-- **Multi-source ingestion**: Greenhouse boards + SerpAPI (Google Jobs)
-- **Preference-based scoring**: Rule engine weights tech stack, seniority, etc.
-- **24h/7d freshness**: Auto-refresh every 15 minutes
-- **One-click approve/skip**: Web UI with instant feedback
-- **Dashboard sync**: Auto-syncs approved jobs to personal dashboard
+## Features
+- **Multi-source ingestion**: Greenhouse, Lever, SerpAPI (Google Jobs)
+- **Preference-based scoring**: rules-driven scoring for tech stack, seniority, etc.
+- **Triage workflow**: approve / applied / skipped statuses
+- **De-duplication**: avoids repeated jobs across runs
+- **Dashboard sync**: optional webhook/DB sync on “applied”
+- **Manual scan**: trigger fetch on-demand
 
 ## Quick Start
-
 ```bash
-cd job-engine
-
-# Install deps
 npm install
 
-# Set target companies (optional)
-export GREENHOUSE_BOARDS="https://boards.greenhouse.io/lever,https://boards.greenhouse.io/ashby"
-
-# SerpAPI (Google Jobs)
-export SERPAPI_KEY="<your_key>"
-export SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
-export SERPAPI_LOCATION="Toronto, ON, Canada"
-
-# Run
+# Run locally
 npm run dev
 ```
 
-## Endpoints
-
-- **UI**: http://localhost:3030/
-- **List jobs**: `GET /jobs?tier=A&status=inbox`
-- **Ingest manually**: `POST /jobs/ingest`
-- **Approve/Skip**: `POST /jobs/:id/status`
-- **Trigger fetch**: `POST /api/scheduler/run`
-- **Health**: `GET /health`
+Open: `http://localhost:3030/`
 
 ## Configuration
+Create a `.env` file (see `.env.example` if present):
 
-Edit `src/lib/rules.default.json` to adjust scoring weights.
-Set `GREENHOUSE_BOARDS` and `SERPAPI_*` env vars to target sources.
+```bash
+PORT=3030
+FETCH_INTERVAL_MIN=15
+RUN_ON_STARTUP=true
 
-## Architecture
+# Greenhouse & Lever
+GREENHOUSE_BOARDS="https://boards.greenhouse.io/yourcompany"
+LEVER_BOARDS="https://jobs.lever.co/yourcompany"
 
-See `docs/PLAN.md` and `docs/ARCHITECTURE.md`.
+# SerpAPI (Google Jobs)
+SERPAPI_KEY="<your_key>"
+SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
+SERPAPI_LOCATION="Toronto, ON, Canada"
+```
+
+### Big Tech (optional)
+```bash
+BIGTECH_GREENHOUSE_BOARDS="https://boards.greenhouse.io/stripe,https://boards.greenhouse.io/uber"
+BIGTECH_LEVER_BOARDS="https://jobs.lever.co/yourcompany"
+BIGTECH_FETCH_INTERVAL_MIN=1440
+RUN_ON_STARTUP_BIGTECH=false
+```
+
+## API Endpoints
+- **UI**: `GET /`
+- **List jobs**: `GET /jobs?tier=A&status=inbox&source=greenhouse&bigtech=true`
+- **Ingest (manual)**: `POST /jobs/ingest`
+- **Update status**: `POST /jobs/:id/status` (approved | applied | skipped)
+- **Trigger scan**: `POST /api/scheduler/run`
+- **Health**: `GET /health`
+
+## Development
+```bash
+npm test
+```
+
+## License
+MIT
