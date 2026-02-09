@@ -37,6 +37,14 @@ function scoreJD(jdText, postDateIso) {
     else if (ageHours <= 24*7) { score += rules.freshness.days7; hits.push('+fresh:7d'); }
   }
 
+  // Hard filter for senior roles
+  const hardFilters = ['senior', 'lead', 'staff', 'principal', 'manager'];
+  if (hardFilters.some((kw) => text.includes(kw))) {
+    score -= 100;
+    tier = 'C';
+    hits.push('hard:senior');
+  }
+
   return { score, tier, hits };
 }
 
