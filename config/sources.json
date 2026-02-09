@@ -45,7 +45,12 @@
       "https://salesforce.wd1.myworkdayjobs.com/en-US/External_Career_Site",
       "https://tesla.wd5.myworkdayjobs.com/en-US/TeslaCareers",
       "https://uber.wd1.myworkdayjobs.com/en-US/Uber_Careers"
-    ]
+    ],
+    "smartrecruiters_targets": [],
+    "workable_targets": [],
+    "recruitee_targets": [],
+    "bamboohr_targets": [],
+    "jobvite_targets": []
   },
   "serpapi": {
     "queries": [

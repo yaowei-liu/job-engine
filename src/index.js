@@ -10,6 +10,11 @@ const { fetchAllWithStats: fetchSerpWithStats } = require('./lib/sources/serpapi
 const { fetchAll: fetchAmazon } = require('./lib/sources/amazon');
 const { fetchAll: fetchAshby, DEFAULT_TARGETS: ASHBY_DEFAULT_TARGETS } = require('./lib/sources/ashby');
 const { fetchAll: fetchWorkday, DEFAULT_TARGETS: WORKDAY_DEFAULT_TARGETS } = require('./lib/sources/workday');
+const { fetchAll: fetchSmartRecruiters, DEFAULT_TARGETS: SMARTRECRUITERS_DEFAULT_TARGETS } = require('./lib/sources/smartrecruiters');
+const { fetchAll: fetchWorkable, DEFAULT_TARGETS: WORKABLE_DEFAULT_TARGETS } = require('./lib/sources/workable');
+const { fetchAll: fetchRecruitee, DEFAULT_TARGETS: RECRUITEE_DEFAULT_TARGETS } = require('./lib/sources/recruitee');
+const { fetchAll: fetchBambooHR, DEFAULT_TARGETS: BAMBOOHR_DEFAULT_TARGETS } = require('./lib/sources/bamboohr');
+const { fetchAll: fetchJobvite, DEFAULT_TARGETS: JOBVITE_DEFAULT_TARGETS } = require('./lib/sources/jobvite');
 const { loadSearchConfig, buildQueriesFromConfig } = require('./lib/searchConfig');
 const {
   loadSourcesConfig,
@@ -42,6 +47,15 @@ const TARGET_BOARDS = getListSetting(process.env.GREENHOUSE_BOARDS, coreCfg.gree
 const LEVER_TARGETS = getListSetting(process.env.LEVER_BOARDS, coreCfg.lever_boards, LEVER_BOARDS);
 const ASHBY_TARGETS = getListSetting(process.env.ASHBY_TARGETS, coreCfg.ashby_targets, ASHBY_DEFAULT_TARGETS);
 const WORKDAY_TARGETS = getListSetting(process.env.WORKDAY_TARGETS, coreCfg.workday_targets, WORKDAY_DEFAULT_TARGETS);
+const SMARTRECRUITERS_TARGETS = getListSetting(
+  process.env.SMARTRECRUITERS_TARGETS,
+  coreCfg.smartrecruiters_targets,
+  SMARTRECRUITERS_DEFAULT_TARGETS
+);
+const WORKABLE_TARGETS = getListSetting(process.env.WORKABLE_TARGETS, coreCfg.workable_targets, WORKABLE_DEFAULT_TARGETS);
+const RECRUITEE_TARGETS = getListSetting(process.env.RECRUITEE_TARGETS, coreCfg.recruitee_targets, RECRUITEE_DEFAULT_TARGETS);
+const BAMBOOHR_TARGETS = getListSetting(process.env.BAMBOOHR_TARGETS, coreCfg.bamboohr_targets, BAMBOOHR_DEFAULT_TARGETS);
+const JOBVITE_TARGETS = getListSetting(process.env.JOBVITE_TARGETS, coreCfg.jobvite_targets, JOBVITE_DEFAULT_TARGETS);
 
 const searchCfg = loadSearchConfig();
 const SERP_QUERIES = (buildQueriesFromConfig(searchCfg) || [])
@@ -162,8 +176,19 @@ function isTorontoOrRemote(location) {
 
 function missingSourceConfig() {
   const missing = [];
-  if (!TARGET_BOARDS.length && !LEVER_TARGETS.length && !SERP_QUERIES.length && !ASHBY_TARGETS.length && !WORKDAY_TARGETS.length) {
-    missing.push('No core source targets configured (GREENHOUSE_BOARDS / LEVER_BOARDS / ASHBY_TARGETS / WORKDAY_TARGETS / SERPAPI_QUERIES).');
+  if (
+    !TARGET_BOARDS.length
+    && !LEVER_TARGETS.length
+    && !SERP_QUERIES.length
+    && !ASHBY_TARGETS.length
+    && !WORKDAY_TARGETS.length
+    && !SMARTRECRUITERS_TARGETS.length
+    && !WORKABLE_TARGETS.length
+    && !RECRUITEE_TARGETS.length
+    && !BAMBOOHR_TARGETS.length
+    && !JOBVITE_TARGETS.length
+  ) {
+    missing.push('No core source targets configured (GREENHOUSE/LEVER/ASHBY/WORKDAY/SMARTRECRUITERS/WORKABLE/RECRUITEE/BAMBOOHR/JOBVITE/SERPAPI).');
   }
   if (SERP_QUERIES.length && !process.env.SERPAPI_KEY) {
     missing.push('SERPAPI_KEY is missing while SERPAPI_QUERIES are configured.');
@@ -453,47 +478,186 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
   }
 
   const llmMode = clampLlmMode(opts.llmMode || 'auto');
+  const includeSerpapi = !!opts.includeSerpapi;
   isFetching = true;
   try {
+    const serpBudget = includeSerpapi && SERP_QUERIES.length
+      ? await getSerpApiRunBudget({
+        intervalMinutes: SERPAPI_FETCH_INTERVAL_MIN,
+        monthlyCap: SERPAPI_MONTHLY_QUERY_CAP,
+        reserve: SERPAPI_BUDGET_SAFETY_RESERVE,
+      })
+      : null;
+    const serpPerRunLimit = Math.max(0, serpBudget?.perRunLimit || 0);
+    const serpQueriesForRun = includeSerpapi ? SERP_QUERIES.slice(0, serpPerRunLimit) : [];
+
+    const sourceTasks = [
+      {
+        source: 'greenhouse',
+        fetch: () => (TARGET_BOARDS.length ? fetchGreenhouse(TARGET_BOARDS) : Promise.resolve([])),
+      },
+      {
+        source: 'lever',
+        fetch: () => (LEVER_TARGETS.length ? fetchLever(LEVER_TARGETS) : Promise.resolve([])),
+      },
+      {
+        source: 'ashby',
+        fetch: async () => {
+          if (!ASHBY_TARGETS.length) return [];
+          const jobs = await fetchAshby(ASHBY_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'ashby',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'workday',
+        fetch: async () => {
+          if (!WORKDAY_TARGETS.length) return [];
+          const jobs = await fetchWorkday(WORKDAY_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'workday',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'smartrecruiters',
+        fetch: async () => {
+          if (!SMARTRECRUITERS_TARGETS.length) return [];
+          const jobs = await fetchSmartRecruiters(SMARTRECRUITERS_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'smartrecruiters',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'workable',
+        fetch: async () => {
+          if (!WORKABLE_TARGETS.length) return [];
+          const jobs = await fetchWorkable(WORKABLE_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'workable',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'recruitee',
+        fetch: async () => {
+          if (!RECRUITEE_TARGETS.length) return [];
+          const jobs = await fetchRecruitee(RECRUITEE_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'recruitee',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'bamboohr',
+        fetch: async () => {
+          if (!BAMBOOHR_TARGETS.length) return [];
+          const jobs = await fetchBambooHR(BAMBOOHR_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'bamboohr',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+      {
+        source: 'jobvite',
+        fetch: async () => {
+          if (!JOBVITE_TARGETS.length) return [];
+          const jobs = await fetchJobvite(JOBVITE_TARGETS);
+          return applySourceFreshness(jobs, {
+            source: 'jobvite',
+            hours: SOURCE_FRESHNESS_HOURS,
+            allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
+          });
+        },
+      },
+    ];
+
+    if (includeSerpapi) {
+      sourceTasks.push({
+        source: 'serpapi',
+        fetch: async (runId) => {
+          if (!SERP_QUERIES.length || !process.env.SERPAPI_KEY) {
+            return {
+              jobs: [],
+              meta: {
+                budget: {
+                  ...(serpBudget || {}),
+                  executedQueries: 0,
+                  reason: !process.env.SERPAPI_KEY ? 'missing_api_key' : 'no_queries',
+                },
+              },
+            };
+          }
+
+          if (!serpQueriesForRun.length) {
+            return {
+              jobs: [],
+              meta: {
+                budget: {
+                  ...serpBudget,
+                  executedQueries: 0,
+                  reason: 'budget_exhausted_or_reserved',
+                },
+              },
+            };
+          }
+
+          const serpResult = await fetchSerpWithStats(serpQueriesForRun, SERP_LOCATION, {
+            concurrency: SERPAPI_QUERY_CONCURRENCY,
+          });
+          await recordUsage({
+            runId,
+            queriesUsed: serpResult.stats?.attempted || 0,
+            notes: `queries=${serpResult.stats?.attempted || 0}`,
+          });
+
+          const filtered = applySourceFreshness(serpResult.jobs, {
+            source: 'serpapi',
+            hours: SERP_FRESHNESS_HOURS,
+            allowUnknownDate: SERP_ALLOW_UNKNOWN_DATE,
+          });
+
+          return {
+            jobs: filtered.jobs,
+            meta: {
+              ...filtered.meta,
+              search: serpResult.stats,
+              urlQuality: {
+                direct: serpResult.stats?.directUrlCount || 0,
+                decodedRedirect: serpResult.stats?.decodedUrlCount || 0,
+                unavailable: serpResult.stats?.missingUrlCount || 0,
+              },
+              budget: {
+                ...serpBudget,
+                executedQueries: serpResult.stats?.attempted || 0,
+                configuredQueries: SERP_QUERIES.length,
+              },
+            },
+          };
+        },
+      });
+    }
+
     const response = await runPipeline({
       triggerType,
       label: 'core',
       qualityOptions: buildQualityOptionsForRun(llmMode),
       llmMode,
-      sourceTasks: [
-        {
-          source: 'greenhouse',
-          fetch: () => (TARGET_BOARDS.length ? fetchGreenhouse(TARGET_BOARDS) : Promise.resolve([])),
-        },
-        {
-          source: 'lever',
-          fetch: () => (LEVER_TARGETS.length ? fetchLever(LEVER_TARGETS) : Promise.resolve([])),
-        },
-        {
-          source: 'ashby',
-          fetch: async () => {
-            if (!ASHBY_TARGETS.length) return [];
-            const jobs = await fetchAshby(ASHBY_TARGETS);
-            return applySourceFreshness(jobs, {
-              source: 'ashby',
-              hours: SOURCE_FRESHNESS_HOURS,
-              allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
-            });
-          },
-        },
-        {
-          source: 'workday',
-          fetch: async () => {
-            if (!WORKDAY_TARGETS.length) return [];
-            const jobs = await fetchWorkday(WORKDAY_TARGETS);
-            return applySourceFreshness(jobs, {
-              source: 'workday',
-              hours: SOURCE_FRESHNESS_HOURS,
-              allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
-            });
-          },
-        },
-      ],
+      sourceTasks,
       transform: (jobs) => jobs.map((j) => ({ ...j, is_bigtech: false })),
     });
 
@@ -908,6 +1072,11 @@ async function startScheduler() {
         leverBoards: LEVER_TARGETS.length,
         ashbyTargets: ASHBY_TARGETS.length,
         workdayTargets: WORKDAY_TARGETS.length,
+        smartRecruitersTargets: SMARTRECRUITERS_TARGETS.length,
+        workableTargets: WORKABLE_TARGETS.length,
+        recruiteeTargets: RECRUITEE_TARGETS.length,
+        bamboohrTargets: BAMBOOHR_TARGETS.length,
+        jobviteTargets: JOBVITE_TARGETS.length,
         serpQueries: SERP_QUERIES.length,
         bigTechGreenhouseBoards: BIGTECH_GREENHOUSE_BOARDS.length,
         bigTechLeverBoards: BIGTECH_LEVER_BOARDS.length,
@@ -931,6 +1100,11 @@ async function startScheduler() {
       leverBoards: LEVER_TARGETS.length,
       ashbyTargets: ASHBY_TARGETS.length,
       workdayTargets: WORKDAY_TARGETS.length,
+      smartRecruitersTargets: SMARTRECRUITERS_TARGETS.length,
+      workableTargets: WORKABLE_TARGETS.length,
+      recruiteeTargets: RECRUITEE_TARGETS.length,
+      bamboohrTargets: BAMBOOHR_TARGETS.length,
+      jobviteTargets: JOBVITE_TARGETS.length,
       serpQueries: SERP_QUERIES.length,
       intervalMs: FETCH_INTERVAL,
       serpApiIntervalMs: SERPAPI_FETCH_INTERVAL,
@@ -1039,7 +1213,8 @@ async function startScheduler() {
 
   app.post('/api/scheduler/run', async (req, res) => {
     const llmMode = clampLlmMode(req.body?.llmMode || 'auto');
-    const result = await runFetcher('manual', { llmMode });
+    const includeSerpapi = !!req.body?.includeSerpapi;
+    const result = await runFetcher('manual', { llmMode, includeSerpapi });
     res.json(result);
   });
 

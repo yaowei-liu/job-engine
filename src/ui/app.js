@@ -11,6 +11,7 @@ import {
 import { createState, STAGE_COPY, STAGE_TO_STATUS } from './state.js';
 import {
   renderList,
+  renderCoreProgress,
   renderLlmProgress,
   renderRunSummary,
   renderStageButtons,
@@ -43,6 +44,10 @@ const el = {
   runSummary: document.getElementById('run-summary'),
   runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
+  coreProgress: document.getElementById('core-progress'),
+  coreProgressMeta: document.getElementById('core-progress-meta'),
+  coreProgressBar: document.getElementById('core-progress-bar'),
+  coreProgressDetail: document.getElementById('core-progress-detail'),
   llmProgress: document.getElementById('llm-progress'),
   llmProgressMeta: document.getElementById('llm-progress-meta'),
   llmProgressBar: document.getElementById('llm-progress-bar'),
@@ -63,6 +68,7 @@ const el = {
   runScan: document.getElementById('run-scan'),
   cleanupInbox: document.getElementById('cleanup-inbox'),
   llmMode: document.getElementById('llm-mode'),
+  includeSerpapi: document.getElementById('include-serpapi'),
   closeProvenance: document.getElementById('close-provenance'),
 };
 
@@ -279,6 +285,13 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
     },
     el,
   });
+  renderCoreProgress({
+    progress: {
+      status: 'running',
+      totals: { fetched: 0, inserted: 0, deduped: 0, failed: 0, skipped: 0 },
+    },
+    el,
+  });
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -291,6 +304,7 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
 
       if (activeRunId) {
         const progress = await fetchRunProgress(activeRunId);
+        renderCoreProgress({ progress, el });
         renderLlmProgress({ progress, el });
 
         if (['success', 'partial', 'failed'].includes(progress.status)) return;
@@ -304,6 +318,7 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
       await sleep(700);
       try {
         const finalProgress = await fetchRunProgress(activeRunId);
+        renderCoreProgress({ progress: finalProgress, el });
         renderLlmProgress({ progress: finalProgress, el });
       } catch {
         // no-op, render will refresh from latest run after load
@@ -358,7 +373,10 @@ el.runScan.addEventListener('click', async () => {
   el.runScan.disabled = true;
   el.runScan.textContent = 'Running...';
   clearError();
-  const requestPromise = triggerIngestionRun(el.llmMode?.value || 'auto');
+  const requestPromise = triggerIngestionRun(
+    el.llmMode?.value || 'auto',
+    !!el.includeSerpapi?.checked
+  );
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual',

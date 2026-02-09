@@ -187,6 +187,13 @@ export function renderRunSummary({ run, el }) {
     el.runQualityHints.textContent = `Quality: hard exclusions ${hard}, location mismatches ${loc}, borderline sent to LLM ${llmEligible}.`;
   }
   el.runErrors.textContent = run.errorText || '';
+  renderCoreProgress({
+    progress: {
+      status: run.status,
+      totals: totals,
+    },
+    el,
+  });
   renderLlmProgress({
     progress: {
       status: run.status,
@@ -218,4 +225,31 @@ export function renderLlmProgress({ progress, el }) {
     return;
   }
   el.llmProgressDetail.textContent = `Run done: completed ${completed}/${eligible} eligible, skipped ${skipped}.`;
+}
+
+export function renderCoreProgress({ progress, el }) {
+  const totals = progress?.totals || {};
+  const fetched = Math.max(0, Number(totals.fetched) || 0);
+  const processed = Math.max(
+    0,
+    (Number(totals.inserted) || 0)
+      + (Number(totals.deduped) || 0)
+      + (Number(totals.failed) || 0)
+      + (Number(totals.skipped) || 0)
+  );
+  const percent = fetched > 0 ? Math.min(100, Math.round((processed / fetched) * 100)) : 0;
+  const status = progress?.status || 'idle';
+
+  el.coreProgressMeta.textContent = `${percent}%`;
+  el.coreProgressBar.style.width = `${percent}%`;
+
+  if (status === 'running') {
+    el.coreProgressDetail.textContent = `Processed ${processed}/${fetched} fetched jobs.`;
+    return;
+  }
+  if (!fetched && !processed) {
+    el.coreProgressDetail.textContent = 'No core run data yet.';
+    return;
+  }
+  el.coreProgressDetail.textContent = `Run done: processed ${processed}/${fetched} fetched jobs.`;
 }
