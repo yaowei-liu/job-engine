@@ -54,6 +54,7 @@ function initDB() {
         try {
           await ensureColumn('job_queue', 'hits', 'TEXT');
           await ensureColumn('job_queue', 'years_req', 'TEXT');
+          await ensureColumn('job_queue', 'is_bigtech', 'INTEGER DEFAULT 0');
         } catch (e) {
           return reject(e);
         }
