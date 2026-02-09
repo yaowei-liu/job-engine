@@ -26,7 +26,6 @@ Create a `.env` file (see `.env.example` if present):
 ```bash
 PORT=3030
 FETCH_INTERVAL_MIN=15
-RUN_ON_STARTUP=true
 
 # Greenhouse & Lever
 GREENHOUSE_BOARDS="https://boards.greenhouse.io/yourcompany"
@@ -38,17 +37,9 @@ SERPAPI_QUERIES="software engineer toronto,backend engineer toronto"
 SERPAPI_LOCATION="Toronto, ON, Canada"
 ```
 
-### Big Tech (optional)
-```bash
-BIGTECH_GREENHOUSE_BOARDS="https://boards.greenhouse.io/stripe,https://boards.greenhouse.io/uber"
-BIGTECH_LEVER_BOARDS="https://jobs.lever.co/yourcompany"
-BIGTECH_FETCH_INTERVAL_MIN=1440
-RUN_ON_STARTUP_BIGTECH=false
-```
-
 ## API Endpoints
 - **UI**: `GET /`
-- **List jobs**: `GET /jobs?tier=A&status=inbox&source=greenhouse&bigtech=true`
+- **List jobs**: `GET /jobs?tier=A&status=inbox&source=greenhouse`
 - **Ingest (manual)**: `POST /jobs/ingest`
 - **Update status**: `POST /jobs/:id/status` (approved | applied | skipped)
 - **Trigger scan**: `POST /api/scheduler/run`
