@@ -95,12 +95,21 @@ function initDB() {
           await ensureColumn('job_queue', 'last_seen_at', 'DATETIME');
           await ensureColumn('job_queue', 'last_run_id', 'INTEGER');
           await ensureColumn('job_queue', 'dedup_reason', 'TEXT');
+          await ensureColumn('job_queue', 'fit_score', 'INTEGER');
+          await ensureColumn('job_queue', 'fit_label', 'TEXT');
+          await ensureColumn('job_queue', 'fit_source', 'TEXT');
+          await ensureColumn('job_queue', 'fit_reason_codes', 'TEXT');
+          await ensureColumn('job_queue', 'quality_bucket', 'TEXT');
+          await ensureColumn('job_queue', 'rejected_by_quality', 'INTEGER DEFAULT 0');
+          await ensureColumn('job_queue', 'llm_confidence', 'REAL');
+          await ensureColumn('job_queue', 'llm_missing_must_have', 'TEXT');
         } catch (e) {
           return reject(e);
         }
 
         db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_company_title_loc_date ON job_queue(company_key, title_key, location_key, post_date_key)`);
         db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_fingerprint ON job_queue(canonical_fingerprint) WHERE canonical_fingerprint IS NOT NULL`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_quality_bucket ON job_queue(quality_bucket)`);
         db.run(`UPDATE job_queue SET company_key = lower(trim(company)) WHERE company_key IS NULL`);
         db.run(`UPDATE job_queue SET title_key = lower(trim(title)) WHERE title_key IS NULL`);
         db.run(`UPDATE job_queue SET location_key = lower(trim(COALESCE(location, ''))) WHERE location_key IS NULL`);
@@ -175,6 +184,33 @@ function initDB() {
             `);
             await dbRun(`CREATE INDEX IF NOT EXISTS idx_serpapi_usage_created_at ON serpapi_usage(created_at DESC)`);
             await dbRun(`CREATE INDEX IF NOT EXISTS idx_serpapi_usage_run_id ON serpapi_usage(run_id)`);
+
+            await dbRun(`
+              CREATE TABLE IF NOT EXISTS llm_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER,
+                calls INTEGER NOT NULL DEFAULT 0,
+                tokens_prompt INTEGER NOT NULL DEFAULT 0,
+                tokens_completion INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_usage_created_at ON llm_usage(created_at DESC)`);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_usage_run_id ON llm_usage(run_id)`);
+
+            await dbRun(`
+              CREATE TABLE IF NOT EXISTS llm_fit_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cache_key TEXT NOT NULL UNIQUE,
+                fit_label TEXT,
+                fit_score INTEGER DEFAULT 0,
+                confidence REAL DEFAULT 0,
+                reason_codes_json TEXT,
+                missing_must_have_json TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_fit_cache_updated_at ON llm_fit_cache(updated_at DESC)`);
             resolve();
           } catch (e) {
             reject(e);
