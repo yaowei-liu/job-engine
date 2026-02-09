@@ -81,6 +81,55 @@ function payloadHash(job = {}) {
   return crypto.createHash('sha1').update(JSON.stringify(normalizeJob(job))).digest('hex');
 }
 
+async function evaluateJobFit({
+  normalizedJob = {},
+  profile = {},
+  qualityOptions = {},
+  runId = null,
+} = {}) {
+  const detFit = evaluateDeterministicFit(normalizedJob, profile, qualityOptions);
+  let finalFit = {
+    fitScore: detFit.fitScore,
+    fitLabel: detFit.fitLabel,
+    fitSource: detFit.fitSource || 'rules',
+    qualityBucket: detFit.qualityBucket,
+    admittedToInbox: detFit.admittedToInbox,
+    reasonCodes: detFit.reasonCodes || [],
+    llmConfidence: null,
+    missingMustHave: [],
+    llmUsed: false,
+  };
+
+  if (detFit.needsLLM) {
+    const llm = await classifyWithLLM({
+      job: normalizedJob,
+      profile,
+      runId,
+      options: qualityOptions.llm || {},
+    });
+
+    if (!llm.skipped) {
+      const llmAdmitThreshold = Math.max(1, parseInt(String(qualityOptions.llmAdmitThreshold || '65'), 10));
+      const admittedByLLM = llm.fitLabel === 'high' || llm.fitScore >= llmAdmitThreshold;
+      finalFit = {
+        fitScore: llm.fitScore,
+        fitLabel: llm.fitLabel,
+        fitSource: 'llm',
+        qualityBucket: admittedByLLM ? 'high' : 'filtered',
+        admittedToInbox: admittedByLLM,
+        reasonCodes: (detFit.reasonCodes || []).concat((llm.reasonCodes || []).map((r) => `llm:${r}`)),
+        llmConfidence: llm.confidence,
+        missingMustHave: llm.missingMustHave || [],
+        llmUsed: true,
+      };
+    } else {
+      finalFit.reasonCodes = (detFit.reasonCodes || []).concat([`llm_skipped:${llm.reason}`]);
+    }
+  }
+
+  return finalFit;
+}
+
 function isUniqueConstraintError(err) {
   return (
     !!err
@@ -136,45 +185,12 @@ async function ingestJob(job, runId) {
   const hash = payloadHash(normalized);
   const qualityOptions = job.quality_options || {};
   const profile = job.profile || {};
-  const detFit = evaluateDeterministicFit(normalized, profile, qualityOptions);
-  let finalFit = {
-    fitScore: detFit.fitScore,
-    fitLabel: detFit.fitLabel,
-    fitSource: detFit.fitSource || 'rules',
-    qualityBucket: detFit.qualityBucket,
-    admittedToInbox: detFit.admittedToInbox,
-    reasonCodes: detFit.reasonCodes || [],
-    llmConfidence: null,
-    missingMustHave: [],
-    llmUsed: false,
-  };
-
-  if (detFit.needsLLM) {
-    const llm = await classifyWithLLM({
-      job: normalized,
-      profile,
-      runId,
-      options: qualityOptions.llm || {},
-    });
-
-    if (!llm.skipped) {
-      const llmAdmitThreshold = Math.max(1, parseInt(String(qualityOptions.llmAdmitThreshold || '65'), 10));
-      const admittedByLLM = llm.fitLabel === 'high' || llm.fitScore >= llmAdmitThreshold;
-      finalFit = {
-        fitScore: llm.fitScore,
-        fitLabel: llm.fitLabel,
-        fitSource: 'llm',
-        qualityBucket: admittedByLLM ? 'high' : 'filtered',
-        admittedToInbox: admittedByLLM,
-        reasonCodes: (detFit.reasonCodes || []).concat((llm.reasonCodes || []).map((r) => `llm:${r}`)),
-        llmConfidence: llm.confidence,
-        missingMustHave: llm.missingMustHave || [],
-        llmUsed: true,
-      };
-    } else {
-      finalFit.reasonCodes = (detFit.reasonCodes || []).concat([`llm_skipped:${llm.reason}`]);
-    }
-  }
+  const finalFit = await evaluateJobFit({
+    normalizedJob: normalized,
+    profile,
+    qualityOptions,
+    runId,
+  });
 
   const admissionStatus = finalFit.admittedToInbox ? 'inbox' : 'filtered';
 
@@ -338,6 +354,7 @@ module.exports = {
   addJobEvent,
   buildFingerprint,
   createRun,
+  evaluateJobFit,
   finalizeRun,
   ingestJob,
   normalizeJob,

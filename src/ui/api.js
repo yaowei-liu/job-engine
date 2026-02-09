@@ -44,3 +44,8 @@ export async function triggerIngestionRun() {
   const res = await fetch('/api/scheduler/run', { method: 'POST' });
   return parseJsonOrThrow(res, 'Failed to run ingestion');
 }
+
+export async function triggerInboxCleanupRun() {
+  const res = await fetch('/api/scheduler/cleanup-inbox', { method: 'POST' });
+  return parseJsonOrThrow(res, 'Failed to cleanup inbox');
+}
