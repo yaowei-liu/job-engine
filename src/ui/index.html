@@ -84,6 +84,9 @@
       jobs.forEach(j => {
         const div = document.createElement('div');
         div.className = `job p-4 bg-white rounded-lg shadow-sm border border-slate-200 ${tierColors[j.tier] || tierColors.B} border-l-4`;
+        const hits = (() => {
+          try { return j.hits ? JSON.parse(j.hits) : null; } catch { return null; }
+        })();
         div.innerHTML = `
           <div class="flex items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
@@ -96,12 +99,15 @@
                 ${j.location ? `<span>📍 ${j.location}</span>` : ''}
                 <span>📊 分数: ${j.score}</span>
                 ${j.source ? `<span>🔗 ${j.source}</span>` : ''}
+                ${j.years_req ? `<span>🧮 ${j.years_req}</span>` : ''}
               </div>
+              ${hits ? `<div class="mt-2 text-xs text-slate-400">命中: ${hits.join(' · ')}</div>` : ''}
               ${j.url ? `<a href="${j.url}" target="_blank" class="mt-2 inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">🔗 查看职位 →</a>` : ''}
             </div>
-            <div class="flex gap-2 shrink-0">
+            <div class="flex flex-col gap-2 shrink-0">
               <button data-id="${j.id}" data-status="approved" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-sm font-medium transition-colors">批准</button>
               <button data-id="${j.id}" data-status="skipped" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-sm font-medium transition-colors">跳过</button>
+              <button data-company="${j.company}" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md text-sm font-medium transition-colors">忽略公司</button>
             </div>
           </div>
         `;
@@ -112,6 +118,17 @@
     list.addEventListener('click', async (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
+
+      if (btn.dataset.company) {
+        await fetch('/jobs/company/skip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company: btn.dataset.company })
+        });
+        load();
+        return;
+      }
+
       const id = btn.dataset.id;
       const newStatus = btn.dataset.status;
       await fetch(`/jobs/${id}/status`, {
