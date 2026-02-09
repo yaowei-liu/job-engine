@@ -1,0 +1,38 @@
+{
+  "target_roles": [
+    "software engineer",
+    "backend engineer",
+    "full stack engineer",
+    "new grad",
+    "entry level"
+  ],
+  "must_have_skills": [
+    "javascript",
+    "typescript",
+    "node",
+    "sql"
+  ],
+  "nice_to_have_skills": [
+    "react",
+    "aws",
+    "python",
+    "docker",
+    "distributed systems"
+  ],
+  "location_preferences": [
+    "toronto",
+    "ontario",
+    "canada",
+    "remote"
+  ],
+  "remote_policy": "hybrid_or_remote",
+  "hard_exclusions": [
+    "senior",
+    "staff",
+    "principal",
+    "manager",
+    "director",
+    "10+ years",
+    "8+ years"
+  ]
+}

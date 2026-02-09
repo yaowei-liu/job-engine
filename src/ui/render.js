@@ -60,6 +60,12 @@ export function renderList({ state, el }) {
 
     const hits = parseHits(job.hits);
     const actions = actionsForStage(state.stage, job.id);
+    const fitBadge = (() => {
+      if (job.fit_label === 'high') return 'bg-emerald-100 text-emerald-700';
+      if (job.fit_label === 'medium') return 'bg-amber-100 text-amber-700';
+      if (job.fit_label === 'low') return 'bg-rose-100 text-rose-700';
+      return 'bg-slate-100 text-slate-600';
+    })();
 
     card.innerHTML = `
       <div class="flex items-start justify-between gap-3">
@@ -71,6 +77,7 @@ export function renderList({ state, el }) {
             <span>Score: ${job.score}</span>
             <span>Tier: ${job.tier}</span>
             <span>Source: ${job.source || 'unknown'}</span>
+            ${job.fit_label ? `<span class="px-2 py-0.5 rounded-full ${fitBadge}">Fit: ${job.fit_label} (${job.fit_score || 0})</span>` : ''}
             ${job.years_req ? `<span>${job.years_req}</span>` : ''}
           </div>
           <div class="mt-1 text-xs text-slate-500 flex flex-wrap gap-2">

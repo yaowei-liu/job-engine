@@ -21,6 +21,7 @@ const {
 const { filterJobsByFreshness } = require('./lib/freshness');
 const { getSerpApiRunBudget, recordUsage } = require('./lib/serpapiBudget');
 const { createRun, finalizeRun, ingestJob } = require('./lib/ingestion');
+const { loadProfileConfig } = require('./lib/profileConfig');
 
 const app = express();
 app.use(express.json());
@@ -31,6 +32,9 @@ const serpapiCfg = sourcesCfg.serpapi || {};
 const freshnessCfg = sourcesCfg.freshness || {};
 const schedulerCfg = sourcesCfg.scheduler || {};
 const bigTechCfg = sourcesCfg.bigtech || {};
+const qualityCfg = sourcesCfg.quality || {};
+const llmCfg = sourcesCfg.llm || {};
+const profile = loadProfileConfig();
 
 const TARGET_BOARDS = getListSetting(process.env.GREENHOUSE_BOARDS, coreCfg.greenhouse_boards, GH_BOARDS);
 const LEVER_TARGETS = getListSetting(process.env.LEVER_BOARDS, coreCfg.lever_boards, LEVER_BOARDS);
@@ -69,6 +73,33 @@ const BIGTECH_AMAZON_LOCATIONS = getListSetting(
 );
 const BIGTECH_FETCH_INTERVAL_MIN = getIntSetting(process.env.BIGTECH_FETCH_INTERVAL_MIN, bigTechCfg.fetch_interval_min, 1440);
 const RUN_ON_STARTUP_BIGTECH = getBoolSetting(process.env.RUN_ON_STARTUP_BIGTECH, bigTechCfg.run_on_startup, true);
+const QUALITY_MIN_INBOX_SCORE = getIntSetting(process.env.QUALITY_MIN_INBOX_SCORE, qualityCfg.min_inbox_score, 55);
+const QUALITY_BORDERLINE_MIN = getIntSetting(process.env.QUALITY_BORDERLINE_MIN, qualityCfg.borderline_min, 35);
+const QUALITY_BORDERLINE_MAX = getIntSetting(process.env.QUALITY_BORDERLINE_MAX, qualityCfg.borderline_max, 54);
+const QUALITY_LLM_ADMIT_THRESHOLD = getIntSetting(process.env.QUALITY_LLM_ADMIT_THRESHOLD, qualityCfg.llm_admit_threshold, 65);
+const QUALITY_ALLOW_UNKNOWN_LOCATION = getBoolSetting(process.env.QUALITY_ALLOW_UNKNOWN_LOCATION, qualityCfg.allow_unknown_location, false);
+const LLM_ENABLED = getBoolSetting(process.env.LLM_ENABLED, llmCfg.enabled, false);
+const LLM_DAILY_CAP = getIntSetting(process.env.LLM_DAILY_CAP, llmCfg.daily_cap, 120);
+const LLM_MAX_PER_RUN = getIntSetting(process.env.LLM_MAX_PER_RUN, llmCfg.max_per_run, 30);
+const LLM_TIMEOUT_MS = getIntSetting(process.env.LLM_TIMEOUT_MS, llmCfg.timeout_ms, 15000);
+const LLM_MODEL = getStringSetting(process.env.LLM_MODEL, llmCfg.model, 'gpt-4o-mini');
+
+function buildQualityOptionsForRun() {
+  return {
+    minInboxScore: QUALITY_MIN_INBOX_SCORE,
+    borderlineMin: QUALITY_BORDERLINE_MIN,
+    borderlineMax: QUALITY_BORDERLINE_MAX,
+    llmAdmitThreshold: QUALITY_LLM_ADMIT_THRESHOLD,
+    allowUnknownLocation: QUALITY_ALLOW_UNKNOWN_LOCATION,
+    llm: {
+      enabled: String(LLM_ENABLED),
+      dailyCap: LLM_DAILY_CAP,
+      maxPerRun: LLM_MAX_PER_RUN,
+      timeoutMs: LLM_TIMEOUT_MS,
+      model: LLM_MODEL,
+    },
+  };
+}
 
 function isTorontoOrRemote(location) {
   const loc = (location || '').toLowerCase();
@@ -110,9 +141,15 @@ let isFetching = false;
 let isBigTechFetching = false;
 let isSerpFetching = false;
 
-async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs }) {
+async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs, qualityOptions = {} }) {
   const runId = await createRun(triggerType);
   const start = Date.now();
+  const runQualityOptions = qualityOptions || {};
+  const qualitySummary = {
+    admittedToInbox: 0,
+    filteredOut: 0,
+    llmUsed: 0,
+  };
 
   const summary = {
     runId,
@@ -128,6 +165,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       failed: 0,
       skipped: 0,
     },
+    quality: qualitySummary,
     sources: {},
     errors: [],
   };
@@ -170,11 +208,14 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       }
 
       try {
-        const result = await ingestJob(job, runId);
+        const result = await ingestJob({ ...job, profile, quality_options: runQualityOptions }, runId);
         if (result.skipped) {
           summary.totals.skipped += 1;
           continue;
         }
+        if (result.admittedToInbox) qualitySummary.admittedToInbox += 1;
+        else qualitySummary.filteredOut += 1;
+        if (result.llmUsed) qualitySummary.llmUsed += 1;
         if (result.deduped) {
           summary.totals.deduped += 1;
           summary.sources[source].deduped += 1;
@@ -232,6 +273,7 @@ async function runFetcher(triggerType = 'manual') {
     const response = await runPipeline({
       triggerType,
       label: 'core',
+      qualityOptions: buildQualityOptionsForRun(),
       sourceTasks: [
         {
           source: 'greenhouse',
@@ -300,6 +342,7 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi') {
     const response = await runPipeline({
       triggerType,
       label: 'serpapi',
+      qualityOptions: buildQualityOptionsForRun(),
       sourceTasks: [
         {
           source: 'serpapi',
@@ -384,6 +427,7 @@ async function runBigTechFetcher(triggerType = 'scheduler_bigtech') {
     const response = await runPipeline({
       triggerType,
       label: 'bigtech',
+      qualityOptions: buildQualityOptionsForRun(),
       sourceTasks: [
         {
           source: 'greenhouse',
@@ -462,6 +506,14 @@ async function startScheduler() {
         bigTechLeverBoards: BIGTECH_LEVER_BOARDS.length,
         bigTechAmazonQueries: BIGTECH_AMAZON_QUERIES.length,
       },
+      quality: {
+        minInboxScore: QUALITY_MIN_INBOX_SCORE,
+        borderlineMin: QUALITY_BORDERLINE_MIN,
+        borderlineMax: QUALITY_BORDERLINE_MAX,
+        llmAdmitThreshold: QUALITY_LLM_ADMIT_THRESHOLD,
+        llmEnabled: LLM_ENABLED,
+        llmDailyCap: LLM_DAILY_CAP,
+      },
       missingConfig: missingSourceConfig(),
     });
   });
@@ -482,6 +534,15 @@ async function startScheduler() {
       nextRunIn: scheduled ? 'active (interval)' : 'stopped',
       nextSerpApiRunIn: scheduledSerpApi ? 'active (interval)' : 'stopped',
       nextBigTechRunIn: scheduledBigTech ? 'active (interval)' : 'stopped',
+      quality: {
+        minInboxScore: QUALITY_MIN_INBOX_SCORE,
+        borderlineMin: QUALITY_BORDERLINE_MIN,
+        borderlineMax: QUALITY_BORDERLINE_MAX,
+        llmAdmitThreshold: QUALITY_LLM_ADMIT_THRESHOLD,
+        llmEnabled: LLM_ENABLED,
+        llmDailyCap: LLM_DAILY_CAP,
+        llmMaxPerRun: LLM_MAX_PER_RUN,
+      },
       missingConfig: missingSourceConfig(),
     });
   });

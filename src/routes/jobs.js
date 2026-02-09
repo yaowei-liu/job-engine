@@ -2,6 +2,7 @@ const express = require('express');
 const { dbAll, dbGet, dbRun } = require('../lib/db');
 const { scoreJD } = require('../lib/score');
 const { addJobEvent } = require('../lib/ingestion');
+const { isValidWorkflowStatus } = require('../lib/jobStatus');
 
 const router = express.Router();
 
@@ -42,6 +43,7 @@ router.get('/', async (req, res) => {
     bigtech,
     hasErrors,
     seenWithinDays,
+    includeFiltered,
     page = '1',
     pageSize = '50',
     legacy,
@@ -57,6 +59,8 @@ router.get('/', async (req, res) => {
   if (status) {
     whereSql += ' AND status = ?';
     params.push(status);
+  } else if (includeFiltered !== 'true') {
+    whereSql += " AND status != 'filtered'";
   }
   if (source) {
     whereSql += ' AND source = ?';
@@ -99,7 +103,9 @@ router.get('/', async (req, res) => {
     const totalRow = await dbGet(`SELECT COUNT(*) AS total FROM job_queue ${whereSql}`, params);
     const items = await dbAll(
       `SELECT id, company, title, location, post_date, source, url, score, tier, status, hits, years_req,
-              is_bigtech, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint
+              is_bigtech, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint,
+              fit_score, fit_label, fit_source, fit_reason_codes, quality_bucket, rejected_by_quality,
+              llm_confidence, llm_missing_must_have
        FROM job_queue
        ${whereSql}
        ${orderSql}
@@ -129,7 +135,8 @@ router.get('/:id/provenance', async (req, res) => {
 
   try {
     const job = await dbGet(
-      `SELECT id, company, title, source, url, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint
+      `SELECT id, company, title, source, url, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint,
+              fit_score, fit_label, fit_source, fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have
        FROM job_queue WHERE id = ?`,
       [id]
     );

@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const { scoreJD } = require('./score');
 const { extractYearsRequirement } = require('./jdExtract');
+const { evaluateDeterministicFit } = require('./qualityGate');
+const { classifyWithLLM } = require('./llmFit');
 
 function getDB() {
   return require('./db');
@@ -124,6 +126,49 @@ async function ingestJob(job, runId) {
   const fingerprint = buildFingerprint(normalized);
   const sourceKey = buildSourceJobKey(normalized);
   const hash = payloadHash(normalized);
+  const qualityOptions = job.quality_options || {};
+  const profile = job.profile || {};
+  const detFit = evaluateDeterministicFit(normalized, profile, qualityOptions);
+  let finalFit = {
+    fitScore: detFit.fitScore,
+    fitLabel: detFit.fitLabel,
+    fitSource: detFit.fitSource || 'rules',
+    qualityBucket: detFit.qualityBucket,
+    admittedToInbox: detFit.admittedToInbox,
+    reasonCodes: detFit.reasonCodes || [],
+    llmConfidence: null,
+    missingMustHave: [],
+    llmUsed: false,
+  };
+
+  if (detFit.needsLLM) {
+    const llm = await classifyWithLLM({
+      job: normalized,
+      profile,
+      runId,
+      options: qualityOptions.llm || {},
+    });
+
+    if (!llm.skipped) {
+      const llmAdmitThreshold = Math.max(1, parseInt(String(qualityOptions.llmAdmitThreshold || '65'), 10));
+      const admittedByLLM = llm.fitLabel === 'high' || llm.fitScore >= llmAdmitThreshold;
+      finalFit = {
+        fitScore: llm.fitScore,
+        fitLabel: llm.fitLabel,
+        fitSource: 'llm',
+        qualityBucket: admittedByLLM ? 'high' : 'filtered',
+        admittedToInbox: admittedByLLM,
+        reasonCodes: (detFit.reasonCodes || []).concat((llm.reasonCodes || []).map((r) => `llm:${r}`)),
+        llmConfidence: llm.confidence,
+        missingMustHave: llm.missingMustHave || [],
+        llmUsed: true,
+      };
+    } else {
+      finalFit.reasonCodes = (detFit.reasonCodes || []).concat([`llm_skipped:${llm.reason}`]);
+    }
+  }
+
+  const admissionStatus = finalFit.admittedToInbox ? 'inbox' : 'filtered';
 
   const existing = await dbGet(
     `SELECT id FROM job_queue WHERE canonical_fingerprint = ? LIMIT 1`,
@@ -138,9 +183,12 @@ async function ingestJob(job, runId) {
     jobId = existing.id;
     await dbRun(
       `UPDATE job_queue
-       SET company = ?, title = ?, location = ?, post_date = ?, source = ?, url = ?, jd_text = ?, score = ?, tier = ?, status = COALESCE(status, 'inbox'),
+       SET company = ?, title = ?, location = ?, post_date = ?, source = ?, url = ?, jd_text = ?, score = ?, tier = ?,
+           status = CASE WHEN status IN ('approved', 'applied', 'skipped') THEN status ELSE ? END,
            hits = ?, years_req = ?, is_bigtech = ?, company_key = ?, title_key = ?, location_key = ?, post_date_key = ?,
-           canonical_fingerprint = ?, dedup_reason = ?, last_run_id = ?, last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+           canonical_fingerprint = ?, dedup_reason = ?, last_run_id = ?, fit_score = ?, fit_label = ?, fit_source = ?,
+           fit_reason_codes = ?, quality_bucket = ?, rejected_by_quality = ?, llm_confidence = ?, llm_missing_must_have = ?,
+           last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
         normalized.company,
@@ -152,6 +200,7 @@ async function ingestJob(job, runId) {
         normalized.jd_text,
         score,
         tier,
+        admissionStatus,
         JSON.stringify(hits),
         yearsReq,
         normalized.is_bigtech ? 1 : 0,
@@ -162,6 +211,14 @@ async function ingestJob(job, runId) {
         fingerprint.value,
         fingerprint.reason,
         runId || null,
+        finalFit.fitScore,
+        finalFit.fitLabel,
+        finalFit.fitSource,
+        JSON.stringify(finalFit.reasonCodes || []),
+        finalFit.qualityBucket,
+        finalFit.admittedToInbox ? 0 : 1,
+        finalFit.llmConfidence,
+        JSON.stringify(finalFit.missingMustHave || []),
         jobId,
       ]
     );
@@ -170,8 +227,9 @@ async function ingestJob(job, runId) {
       `INSERT INTO job_queue (
         company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req,
         is_bigtech, company_key, title_key, location_key, post_date_key, canonical_fingerprint,
-        first_seen_at, last_seen_at, last_run_id, dedup_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)`,
+        first_seen_at, last_seen_at, last_run_id, dedup_reason, fit_score, fit_label, fit_source,
+        fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalized.company,
         normalized.title,
@@ -182,6 +240,7 @@ async function ingestJob(job, runId) {
         normalized.jd_text,
         score,
         tier,
+        admissionStatus,
         JSON.stringify(hits),
         yearsReq,
         normalized.is_bigtech ? 1 : 0,
@@ -192,6 +251,14 @@ async function ingestJob(job, runId) {
         fingerprint.value,
         runId || null,
         fingerprint.reason,
+        finalFit.fitScore,
+        finalFit.fitLabel,
+        finalFit.fitSource,
+        JSON.stringify(finalFit.reasonCodes || []),
+        finalFit.qualityBucket,
+        finalFit.admittedToInbox ? 0 : 1,
+        finalFit.llmConfidence,
+        JSON.stringify(finalFit.missingMustHave || []),
       ]
     );
     jobId = inserted.lastID;
@@ -213,6 +280,8 @@ async function ingestJob(job, runId) {
       dedupReason: fingerprint.reason,
       source: normalized.source,
       sourceJobKey: sourceKey,
+      qualityBucket: finalFit.qualityBucket,
+      admittedToInbox: finalFit.admittedToInbox,
     },
   });
 
@@ -224,6 +293,9 @@ async function ingestJob(job, runId) {
     hits,
     source: normalized.source,
     title: normalized.title,
+    qualityBucket: finalFit.qualityBucket,
+    admittedToInbox: finalFit.admittedToInbox,
+    llmUsed: finalFit.llmUsed,
   };
 }
 
