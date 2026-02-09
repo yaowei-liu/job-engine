@@ -47,16 +47,16 @@ async function ingestJob(job) {
   return new Promise((resolve, reject) => {
     // De-dupe by company + title (URL can be null or vary)
     db.get(
-      'SELECT id FROM job_queue WHERE lower(company) = ? AND lower(title) = ? LIMIT 1',
+      'SELECT id FROM job_queue WHERE company_key = ? AND title_key = ? LIMIT 1',
       [companyKey, titleKey],
       (checkErr, row) => {
         if (checkErr) return reject(checkErr);
         if (row) return resolve({ id: row.id, skipped: true, score, tier, hits, title: job.title });
 
         db.run(
-          `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?)`,
-          [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req],
+          `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req, company_key, title_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?)`,
+          [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req, companyKey, titleKey],
           function (err) {
             if (err) return reject(err);
             resolve({ id: this.lastID, score, tier, hits, title: job.title });
@@ -69,6 +69,11 @@ async function ingestJob(job) {
 
 // Fetch and ingest jobs from all sources
 async function runFetcher() {
+  if (isFetching) {
+    console.log('[Scheduler] Skipping run; previous fetch still in progress');
+    return;
+  }
+  isFetching = true;
   console.log(`[Scheduler] Fetching jobs...`);
   const start = Date.now();
 
@@ -102,13 +107,17 @@ async function runFetcher() {
     console.log(`[Scheduler] Done. Ingested ${ingested}, skipped ${skipped}, took ${dur}ms`);
   } catch (err) {
     console.error('[Scheduler] Fetch failed:', err.message);
+  } finally {
+    isFetching = false;
   }
 }
 
 // Scheduler: run every N minutes
-const FETCH_INTERVAL_MIN = parseInt(process.env.FETCH_INTERVAL_MIN || '15', 10);
+const rawIntervalMin = parseInt(process.env.FETCH_INTERVAL_MIN || '15', 10);
+const FETCH_INTERVAL_MIN = Number.isFinite(rawIntervalMin) && rawIntervalMin > 0 ? rawIntervalMin : 15;
 const FETCH_INTERVAL = FETCH_INTERVAL_MIN * 60 * 1000;
 let scheduled = null;
+let isFetching = false;
 
 async function startScheduler() {
   runFetcher();
