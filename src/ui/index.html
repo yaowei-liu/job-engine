@@ -41,7 +41,7 @@
       </div>
     </header>
 
-    <div class="grid gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200 md:grid-cols-6">
+    <div class="grid gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200 md:grid-cols-7">
       <input id="q" placeholder="搜索公司/岗位" class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
       <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
         <option value="">所有等级</option>
@@ -58,7 +58,12 @@
       <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
         <option value="">所有来源</option>
         <option value="greenhouse">Greenhouse</option>
+        <option value="lever">Lever</option>
         <option value="serpapi">SerpAPI</option>
+      </select>
+      <select id="bigtech" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+        <option value="">全部公司</option>
+        <option value="true">Big Tech</option>
       </select>
       <select id="sort" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
         <option value="newest">最新</option>
@@ -67,7 +72,7 @@
         <option value="oldest">最早</option>
       </select>
       <input id="minScore" type="number" placeholder="最低分" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-      <span id="stats" class="md:col-span-6 text-sm text-slate-500"></span>
+      <span id="stats" class="md:col-span-7 text-sm text-slate-500"></span>
     </div>
 
     <div id="list" class="space-y-3"></div>
@@ -79,6 +84,7 @@
     const status = document.getElementById('status');
     const source = document.getElementById('source');
     const sort = document.getElementById('sort');
+    const bigtech = document.getElementById('bigtech');
     const q = document.getElementById('q');
     const minScore = document.getElementById('minScore');
     const stats = document.getElementById('stats');
@@ -88,6 +94,7 @@
       if (tier.value) params.set('tier', tier.value);
       if (status.value) params.set('status', status.value);
       if (source.value) params.set('source', source.value);
+      if (bigtech.value) params.set('bigtech', bigtech.value);
       if (sort.value) params.set('sort', sort.value);
       if (q.value) params.set('q', q.value);
       if (minScore.value) params.set('minScore', minScore.value);
@@ -171,6 +178,7 @@
     tier.addEventListener('change', load);
     status.addEventListener('change', load);
     source.addEventListener('change', load);
+    bigtech.addEventListener('change', load);
     sort.addEventListener('change', load);
     q.addEventListener('input', () => {
       clearTimeout(window.__qTimer);

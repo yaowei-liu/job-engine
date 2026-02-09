@@ -23,13 +23,14 @@ router.post('/ingest', (req, res) => {
 
 // List jobs
 router.get('/', (req, res) => {
-  const { tier, status, source, q, minScore, sort } = req.query;
+  const { tier, status, source, q, minScore, sort, bigtech } = req.query;
   let sql = 'SELECT * FROM job_queue WHERE 1=1';
   const params = [];
 
   if (tier) { sql += ' AND tier = ?'; params.push(tier); }
   if (status) { sql += ' AND status = ?'; params.push(status); }
   if (source) { sql += ' AND source = ?'; params.push(source); }
+  if (bigtech === 'true') { sql += ' AND is_bigtech = 1'; }
   if (q) {
     sql += ' AND (title LIKE ? OR company LIKE ?)';
     params.push(`%${q}%`, `%${q}%`);
