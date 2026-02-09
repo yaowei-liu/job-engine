@@ -44,6 +44,17 @@ function normalizePostedAt(postedAt) {
   return new Date(now.getTime() - delta).toISOString().slice(0, 10);
 }
 
+function pickDirectUrl(job) {
+  const apply = job.apply_options || [];
+  const direct = apply.find((opt) => opt?.link && !opt.link.includes('google.com'));
+  if (direct?.link) return direct.link;
+
+  const related = (job.related_links || []).find((opt) => opt?.link && !opt.link.includes('google.com'));
+  if (related?.link) return related.link;
+
+  return job.related_links?.[0]?.link || job.share_link || null;
+}
+
 function fetchJobs(query, location = DEFAULT_LOCATION) {
   if (!process.env.SERPAPI_KEY) {
     console.warn('[SerpAPI] Missing SERPAPI_KEY');
@@ -76,7 +87,7 @@ function fetchJobs(query, location = DEFAULT_LOCATION) {
           location: job.location || null,
           post_date: normalizePostedAt(job.detected_extensions?.posted_at) || null,
           source: 'serpapi',
-          url: job.related_links?.[0]?.link || job.share_link || null,
+          url: pickDirectUrl(job),
           jd_text: job.description?.slice(0, 2000) || null,
         }));
 
@@ -96,4 +107,4 @@ async function fetchAll(queries = [], location) {
   return results.flat();
 }
 
-module.exports = { fetchJobs, fetchAll, normalizePostedAt };
+module.exports = { fetchJobs, fetchAll, normalizePostedAt, pickDirectUrl };
