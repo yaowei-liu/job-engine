@@ -126,7 +126,11 @@ export function renderList({ state, el }) {
             </div>
           ` : ''}
           ${hits.length ? `<p class="mt-1 text-xs text-slate-400">Hits: ${hits.join(' | ')}</p>` : ''}
-          ${job.url ? `<a href="${job.url}" target="_blank" class="inline-block mt-2 text-sm text-sky-700 hover:text-sky-900">Open posting</a>` : ''}
+          ${job.url
+            ? `<a href="${job.url}" target="_blank" class="inline-block mt-2 text-sm text-sky-700 hover:text-sky-900">Open posting</a>`
+            : (job.source === 'serpapi'
+              ? '<span class="inline-block mt-2 text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800">Link unavailable</span>'
+              : '')}
         </div>
         <div class="flex flex-col gap-2 shrink-0">
           <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[job.status] || 'bg-slate-100 text-slate-700'}">${job.status || 'inbox'}</span>

@@ -51,15 +51,59 @@ function isGoogleUrl(link) {
   }
 }
 
+function decodeGoogleRedirectUrl(link) {
+  try {
+    const u = new URL(link);
+    if (!isGoogleUrl(link)) return null;
+    const candidate = u.searchParams.get('q') || u.searchParams.get('url') || u.searchParams.get('adurl');
+    if (!candidate) return null;
+    const decoded = decodeURIComponent(candidate);
+    if (!/^https?:\/\//i.test(decoded)) return null;
+    if (isGoogleUrl(decoded)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+function findBestLink(candidates = [], sourceLabel = 'unknown') {
+  for (const item of candidates) {
+    const link = item?.link;
+    if (!link) continue;
+    if (!isGoogleUrl(link)) {
+      return { url: link, resolution: 'direct', source: sourceLabel };
+    }
+  }
+  for (const item of candidates) {
+    const link = item?.link;
+    if (!link) continue;
+    const decoded = decodeGoogleRedirectUrl(link);
+    if (decoded) {
+      return { url: decoded, resolution: 'decoded_redirect', source: sourceLabel };
+    }
+  }
+  return null;
+}
+
+function resolveJobUrl(job) {
+  const apply = findBestLink(job.apply_options || [], 'apply_options');
+  if (apply) return apply;
+  const related = findBestLink(job.related_links || [], 'related_links');
+  if (related) return related;
+
+  if (job.share_link && !isGoogleUrl(job.share_link)) {
+    return { url: job.share_link, resolution: 'direct', source: 'share_link' };
+  }
+  const decodedShare = job.share_link ? decodeGoogleRedirectUrl(job.share_link) : null;
+  if (decodedShare) {
+    return { url: decodedShare, resolution: 'decoded_redirect', source: 'share_link' };
+  }
+
+  return { url: null, resolution: 'unavailable', source: 'none' };
+}
+
 function pickDirectUrl(job) {
-  const apply = job.apply_options || [];
-  const direct = apply.find((opt) => opt?.link && !isGoogleUrl(opt.link));
-  if (direct?.link) return direct.link;
-
-  const related = (job.related_links || []).find((opt) => opt?.link && !isGoogleUrl(opt.link));
-  if (related?.link) return related.link;
-
-  return job.related_links?.[0]?.link || job.share_link || null;
+  return resolveJobUrl(job).url;
 }
 
 function fetchJobs(query, location = DEFAULT_LOCATION) {
@@ -96,15 +140,22 @@ function fetchJobs(query, location = DEFAULT_LOCATION) {
         }
 
         const jobs = json?.jobs_results || [];
-        const mapped = jobs.map((job) => ({
-          company: job.company_name || 'Unknown',
-          title: job.title,
-          location: job.location || null,
-          post_date: normalizePostedAt(job.detected_extensions?.posted_at) || null,
-          source: 'serpapi',
-          url: pickDirectUrl(job),
-          jd_text: job.description?.slice(0, 2000) || null,
-        }));
+        const mapped = jobs.map((job) => {
+          const resolved = resolveJobUrl(job);
+          return {
+            company: job.company_name || 'Unknown',
+            title: job.title,
+            location: job.location || null,
+            post_date: normalizePostedAt(job.detected_extensions?.posted_at) || null,
+            source: 'serpapi',
+            url: resolved.url,
+            jd_text: job.description?.slice(0, 2000) || null,
+            meta: {
+              url_resolution: resolved.resolution,
+              url_source: resolved.source,
+            },
+          };
+        });
 
         resolve(mapped);
       });
@@ -128,6 +179,9 @@ async function fetchAllWithStats(queries = [], location, options = {}) {
   let failed = 0;
   let empty = 0;
   let succeeded = 0;
+  let directUrlCount = 0;
+  let decodedUrlCount = 0;
+  let missingUrlCount = 0;
 
   const workers = Array.from({ length: Math.min(concurrency, safeQueries.length) }, async () => {
     while (index < safeQueries.length) {
@@ -139,6 +193,12 @@ async function fetchAllWithStats(queries = [], location, options = {}) {
           empty += 1;
         } else {
           succeeded += 1;
+          for (const job of result) {
+            const kind = job?.meta?.url_resolution || (job?.url ? 'direct' : 'unavailable');
+            if (kind === 'decoded_redirect') decodedUrlCount += 1;
+            else if (kind === 'direct') directUrlCount += 1;
+            else missingUrlCount += 1;
+          }
           jobs.push(...result);
         }
       } catch {
@@ -155,6 +215,9 @@ async function fetchAllWithStats(queries = [], location, options = {}) {
       succeeded,
       failed,
       empty,
+      directUrlCount,
+      decodedUrlCount,
+      missingUrlCount,
     },
   };
 }

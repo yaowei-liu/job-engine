@@ -581,6 +581,11 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi', opts = {}) {
               meta: {
                 ...filtered.meta,
                 search: serpResult.stats,
+                urlQuality: {
+                  direct: serpResult.stats?.directUrlCount || 0,
+                  decodedRedirect: serpResult.stats?.decodedUrlCount || 0,
+                  unavailable: serpResult.stats?.missingUrlCount || 0,
+                },
                 budget: {
                   ...serpBudget,
                   executedQueries: serpResult.stats?.attempted || 0,
