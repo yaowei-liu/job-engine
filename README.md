@@ -27,6 +27,7 @@ Open:
 ## Configuration
 
 Primary config file: `config/sources.json`.
+Fit profile file: `config/profile.json`.
 
 Precedence:
 - Environment variables override `config/sources.json`
@@ -60,6 +61,20 @@ export SOURCE_FRESHNESS_HOURS=24
 export ALLOW_UNKNOWN_POST_DATE=false
 ```
 
+### Quality Gate + LLM Fit (optional)
+
+```bash
+export QUALITY_MIN_INBOX_SCORE=55
+export QUALITY_BORDERLINE_MIN=35
+export QUALITY_BORDERLINE_MAX=54
+export QUALITY_LLM_ADMIT_THRESHOLD=65
+export LLM_ENABLED=false
+export LLM_DAILY_CAP=120
+export LLM_MAX_PER_RUN=30
+export LLM_MODEL="gpt-4o-mini"
+export OPENAI_API_KEY="<optional>"
+```
+
 ### Big-tech run (optional)
 
 ```bash
@@ -84,6 +99,7 @@ export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
 
 - `GET /jobs`
   - Filters: `tier`, `status`, `source`, `q`, `minScore`, `bigtech=true`, `hasErrors=true`, `seenWithinDays`
+  - `filtered` jobs are hidden by default unless `includeFiltered=true`
   - Pagination: `page`, `pageSize`
   - Returns `{ items, meta }`
   - Legacy mode: `GET /jobs?legacy=true` returns array only
