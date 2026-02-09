@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const { initDB, dbAll } = require('./lib/db');
+const { initDB, dbAll, dbRun } = require('./lib/db');
 const jobsRouter = require('./routes/jobs');
 const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS: GH_BOARDS } = require('./lib/sources/greenhouse');
 const { fetchAll: fetchLever, DEFAULT_BOARDS: LEVER_BOARDS } = require('./lib/sources/lever');
@@ -20,7 +20,7 @@ const {
 } = require('./lib/sourcesConfig');
 const { filterJobsByFreshness } = require('./lib/freshness');
 const { getSerpApiRunBudget, recordUsage } = require('./lib/serpapiBudget');
-const { createRun, finalizeRun, ingestJob } = require('./lib/ingestion');
+const { addJobEvent, createRun, evaluateJobFit, finalizeRun, ingestJob, normalizeJob } = require('./lib/ingestion');
 const { loadProfileConfig } = require('./lib/profileConfig');
 
 const app = express();
@@ -140,6 +140,7 @@ function applySourceFreshness(jobs, { source, hours, allowUnknownDate }) {
 let isFetching = false;
 let isBigTechFetching = false;
 let isSerpFetching = false;
+let isCleanupRunning = false;
 
 async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs, qualityOptions = {} }) {
   const runId = await createRun(triggerType);
@@ -454,6 +455,172 @@ async function runBigTechFetcher(triggerType = 'scheduler_bigtech') {
   }
 }
 
+async function runInboxCleanup(triggerType = 'manual_cleanup') {
+  if (isCleanupRunning) {
+    return {
+      accepted: false,
+      status: 'running',
+      message: 'Inbox cleanup already in progress',
+    };
+  }
+
+  isCleanupRunning = true;
+  const runId = await createRun(triggerType);
+  const start = Date.now();
+  const qualityOptions = buildQualityOptionsForRun();
+  const summary = {
+    runId,
+    trigger: triggerType,
+    label: 'cleanup_inbox',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    durationMs: 0,
+    totals: {
+      fetched: 0,
+      inserted: 0,
+      deduped: 0,
+      failed: 0,
+      skipped: 0,
+      reevaluated: 0,
+      kept: 0,
+      filtered: 0,
+    },
+    quality: {
+      admittedToInbox: 0,
+      filteredOut: 0,
+      llmUsed: 0,
+    },
+    sources: {
+      cleanup_inbox: {
+        fetched: 0,
+        inserted: 0,
+        deduped: 0,
+        failed: 0,
+        error: null,
+      },
+    },
+    errors: [],
+  };
+
+  try {
+    const rows = await dbAll(
+      `SELECT id, company, title, location, post_date, source, url, jd_text, is_bigtech
+       FROM job_queue
+       WHERE status = 'inbox'
+       ORDER BY id DESC`
+    );
+    summary.totals.fetched = rows.length;
+    summary.sources.cleanup_inbox.fetched = rows.length;
+
+    for (const row of rows) {
+      try {
+        const normalized = normalizeJob({
+          company: row.company,
+          title: row.title,
+          location: row.location,
+          post_date: row.post_date,
+          source: row.source,
+          url: row.url,
+          jd_text: row.jd_text,
+          is_bigtech: !!row.is_bigtech,
+        });
+
+        const fit = await evaluateJobFit({
+          normalizedJob: normalized,
+          profile,
+          qualityOptions,
+          runId,
+        });
+        const nextStatus = fit.admittedToInbox ? 'inbox' : 'filtered';
+        const update = await dbRun(
+          `UPDATE job_queue
+           SET status = ?, fit_score = ?, fit_label = ?, fit_source = ?, fit_reason_codes = ?,
+               quality_bucket = ?, rejected_by_quality = ?, llm_confidence = ?, llm_missing_must_have = ?,
+               last_run_id = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND status = 'inbox'`,
+          [
+            nextStatus,
+            fit.fitScore,
+            fit.fitLabel,
+            fit.fitSource,
+            JSON.stringify(fit.reasonCodes || []),
+            fit.qualityBucket,
+            fit.admittedToInbox ? 0 : 1,
+            fit.llmConfidence,
+            JSON.stringify(fit.missingMustHave || []),
+            runId,
+            row.id,
+          ]
+        );
+
+        if (!update.changes) {
+          summary.totals.skipped += 1;
+          continue;
+        }
+
+        summary.totals.reevaluated += 1;
+        if (fit.llmUsed) summary.quality.llmUsed += 1;
+
+        if (fit.admittedToInbox) {
+          summary.totals.kept += 1;
+          summary.quality.admittedToInbox += 1;
+        } else {
+          summary.totals.filtered += 1;
+          summary.quality.filteredOut += 1;
+        }
+
+        await addJobEvent({
+          jobId: row.id,
+          runId,
+          eventType: fit.admittedToInbox ? 'cleanup_kept' : 'cleanup_filtered',
+          message: fit.admittedToInbox
+            ? 'Manual inbox cleanup kept this listing in inbox'
+            : 'Manual inbox cleanup moved listing to filtered',
+          payload: {
+            fitScore: fit.fitScore,
+            fitLabel: fit.fitLabel,
+            fitSource: fit.fitSource,
+            qualityBucket: fit.qualityBucket,
+            reasonCodes: fit.reasonCodes || [],
+            llmUsed: !!fit.llmUsed,
+          },
+        });
+      } catch (err) {
+        summary.totals.failed += 1;
+        summary.sources.cleanup_inbox.failed += 1;
+        summary.errors.push(`cleanup_inbox#${row.id}: ${err.message}`);
+      }
+    }
+
+    summary.finishedAt = new Date().toISOString();
+    summary.durationMs = Date.now() - start;
+    const status = summary.errors.length ? (summary.totals.reevaluated ? 'partial' : 'failed') : 'success';
+    await finalizeRun(runId, status, summary, summary.errors.join(' | ') || null);
+
+    return {
+      runId,
+      status,
+      accepted: true,
+      message: `Inbox cleanup finished with status=${status}`,
+      summary,
+    };
+  } catch (err) {
+    summary.finishedAt = new Date().toISOString();
+    summary.durationMs = Date.now() - start;
+    summary.errors.push(err.message);
+    await finalizeRun(runId, 'failed', summary, err.message);
+    return {
+      runId,
+      status: 'failed',
+      accepted: true,
+      message: err.message,
+      summary,
+    };
+  } finally {
+    isCleanupRunning = false;
+  }
+}
+
 const FETCH_INTERVAL = FETCH_INTERVAL_MIN * 60 * 1000;
 const SERPAPI_FETCH_INTERVAL = SERPAPI_FETCH_INTERVAL_MIN * 60 * 1000;
 const BIGTECH_FETCH_INTERVAL = BIGTECH_FETCH_INTERVAL_MIN * 60 * 1000;
@@ -587,6 +754,11 @@ async function startScheduler() {
 
   app.post('/api/scheduler/run-serpapi', async (req, res) => {
     const result = await runSerpFetcher('manual_serpapi');
+    res.json(result);
+  });
+
+  app.post('/api/scheduler/cleanup-inbox', async (req, res) => {
+    const result = await runInboxCleanup('manual_cleanup');
     res.json(result);
   });
 

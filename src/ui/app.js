@@ -3,6 +3,7 @@ import {
   fetchLatestRun,
   fetchProvenance,
   fetchStageCount,
+  triggerInboxCleanupRun,
   triggerIngestionRun,
   updateJobStatus,
 } from './api.js';
@@ -52,6 +53,7 @@ const el = {
   undoBtn: document.getElementById('undo-btn'),
   refresh: document.getElementById('refresh'),
   runScan: document.getElementById('run-scan'),
+  cleanupInbox: document.getElementById('cleanup-inbox'),
   closeProvenance: document.getElementById('close-provenance'),
 };
 
@@ -303,6 +305,25 @@ el.runScan.addEventListener('click', async () => {
   } finally {
     el.runScan.disabled = false;
     el.runScan.textContent = prevText;
+  }
+});
+
+el.cleanupInbox.addEventListener('click', async () => {
+  const prevText = el.cleanupInbox.textContent;
+  el.cleanupInbox.disabled = true;
+  el.cleanupInbox.textContent = 'Cleaning...';
+  clearError();
+  try {
+    const data = await triggerInboxCleanupRun();
+    if (!data.accepted) {
+      showError(data.message || 'Cleanup already active');
+    }
+    await load();
+  } catch (err) {
+    showError(err.message || 'Failed to cleanup inbox');
+  } finally {
+    el.cleanupInbox.disabled = false;
+    el.cleanupInbox.textContent = prevText;
   }
 });
 
