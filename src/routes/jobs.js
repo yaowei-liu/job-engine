@@ -23,12 +23,29 @@ router.post('/ingest', (req, res) => {
 
 // List jobs
 router.get('/', (req, res) => {
-  const { tier, status } = req.query;
+  const { tier, status, source, q, minScore, sort } = req.query;
   let sql = 'SELECT * FROM job_queue WHERE 1=1';
   const params = [];
+
   if (tier) { sql += ' AND tier = ?'; params.push(tier); }
   if (status) { sql += ' AND status = ?'; params.push(status); }
-  sql += ' ORDER BY post_date DESC, score DESC';
+  if (source) { sql += ' AND source = ?'; params.push(source); }
+  if (q) {
+    sql += ' AND (title LIKE ? OR company LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  if (minScore) {
+    sql += ' AND score >= ?';
+    params.push(Number(minScore));
+  }
+
+  const sortMap = {
+    newest: 'post_date DESC, score DESC',
+    oldest: 'post_date ASC, score DESC',
+    score: 'score DESC, post_date DESC',
+    company: 'company ASC, score DESC',
+  };
+  sql += ` ORDER BY ${sortMap[sort] || 'post_date DESC, score DESC'}`;
 
   db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });

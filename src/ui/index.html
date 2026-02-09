@@ -36,7 +36,8 @@
       </button>
     </header>
 
-    <div class="flex gap-4 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+    <div class="grid gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200 md:grid-cols-6">
+      <input id="q" placeholder="搜索公司/岗位" class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
       <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
         <option value="">所有等级</option>
         <option value="A">Tier A (高匹配)</option>
@@ -48,7 +49,19 @@
         <option value="approved">已批准</option>
         <option value="skipped">已跳过</option>
       </select>
-      <span id="stats" class="ml-auto text-sm text-slate-500 flex items-center"></span>
+      <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+        <option value="">所有来源</option>
+        <option value="greenhouse">Greenhouse</option>
+        <option value="serpapi">SerpAPI</option>
+      </select>
+      <select id="sort" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+        <option value="newest">最新</option>
+        <option value="score">分数最高</option>
+        <option value="company">公司名</option>
+        <option value="oldest">最早</option>
+      </select>
+      <input id="minScore" type="number" placeholder="最低分" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+      <span id="stats" class="md:col-span-6 text-sm text-slate-500"></span>
     </div>
 
     <div id="list" class="space-y-3"></div>
@@ -58,12 +71,20 @@
     const list = document.getElementById('list');
     const tier = document.getElementById('tier');
     const status = document.getElementById('status');
+    const source = document.getElementById('source');
+    const sort = document.getElementById('sort');
+    const q = document.getElementById('q');
+    const minScore = document.getElementById('minScore');
     const stats = document.getElementById('stats');
 
     async function load() {
       const params = new URLSearchParams();
       if (tier.value) params.set('tier', tier.value);
       if (status.value) params.set('status', status.value);
+      if (source.value) params.set('source', source.value);
+      if (sort.value) params.set('sort', sort.value);
+      if (q.value) params.set('q', q.value);
+      if (minScore.value) params.set('minScore', minScore.value);
       const res = await fetch(`/jobs?${params.toString()}`);
       const jobs = await res.json();
       list.innerHTML = '';
@@ -141,6 +162,16 @@
 
     tier.addEventListener('change', load);
     status.addEventListener('change', load);
+    source.addEventListener('change', load);
+    sort.addEventListener('change', load);
+    q.addEventListener('input', () => {
+      clearTimeout(window.__qTimer);
+      window.__qTimer = setTimeout(load, 300);
+    });
+    minScore.addEventListener('input', () => {
+      clearTimeout(window.__sTimer);
+      window.__sTimer = setTimeout(load, 300);
+    });
     document.getElementById('refresh').addEventListener('click', load);
     load();
   </script>

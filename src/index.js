@@ -20,7 +20,9 @@ const SERP_QUERIES = (process.env.SERPAPI_QUERIES || '')
   .split(',')
   .map((q) => q.trim())
   .filter(Boolean);
-const SERP_LOCATION = process.env.SERPAPI_LOCATION ? process.env.SERPAPI_LOCATION.trim() : undefined;
+
+const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
+
 
 // Ingest a single job into the queue
 async function ingestJob(job) {
