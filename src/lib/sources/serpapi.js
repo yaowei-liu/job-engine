@@ -48,6 +48,9 @@ function buildUrl(query, location = DEFAULT_LOCATION) {
     engine: 'google_jobs',
     q: query,
     location,
+    google_domain: process.env.SERPAPI_DOMAIN || 'google.ca',
+    hl: process.env.SERPAPI_HL || 'en',
+    gl: process.env.SERPAPI_GL || 'ca',
     api_key: process.env.SERPAPI_KEY || '',
   });
   return `https://serpapi.com/search.json?${params.toString()}`;
@@ -63,7 +66,8 @@ async function fetchJobs(query, location) {
   try {
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(`[SerpAPI] API error: ${res.status}`);
+      const errText = await res.text();
+      console.error(`[SerpAPI] API error: ${res.status} ${errText}`);
       return [];
     }
 
