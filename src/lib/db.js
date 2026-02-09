@@ -46,6 +46,7 @@ function initDB() {
           company_key TEXT,
           title_key TEXT,
           location_key TEXT,
+          post_date_key TEXT,
           UNIQUE(company, title, url)
         )
       `, async (err) => {
@@ -61,14 +62,16 @@ function initDB() {
           await ensureColumn('job_queue', 'company_key', 'TEXT');
           await ensureColumn('job_queue', 'title_key', 'TEXT');
           await ensureColumn('job_queue', 'location_key', 'TEXT');
+          await ensureColumn('job_queue', 'post_date_key', 'TEXT');
         } catch (e) {
           return reject(e);
         }
 
-        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_company_title_loc ON job_queue(company_key, title_key, location_key)`);
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_company_title_loc_date ON job_queue(company_key, title_key, location_key, post_date_key)`);
         db.run(`UPDATE job_queue SET company_key = lower(trim(company)) WHERE company_key IS NULL`);
         db.run(`UPDATE job_queue SET title_key = lower(trim(title)) WHERE title_key IS NULL`);
         db.run(`UPDATE job_queue SET location_key = lower(trim(COALESCE(location, ''))) WHERE location_key IS NULL`);
+        db.run(`UPDATE job_queue SET post_date_key = COALESCE(post_date, '') WHERE post_date_key IS NULL`);
 
         db.run(`
           CREATE TABLE IF NOT EXISTS preferences (

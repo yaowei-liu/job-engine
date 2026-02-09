@@ -73,20 +73,21 @@ async function ingestJob(job) {
   const companyKey = (job.company || '').trim().toLowerCase();
   const titleKey = (job.title || '').trim().toLowerCase();
   const locationKey = (job.location || '').trim().toLowerCase();
+  const postDateKey = (job.post_date || '').trim();
 
   return new Promise((resolve, reject) => {
     // De-dupe by company + title (URL can be null or vary)
     db.get(
-      'SELECT id FROM job_queue WHERE company_key = ? AND title_key = ? AND location_key = ? LIMIT 1',
-      [companyKey, titleKey, locationKey],
+      'SELECT id FROM job_queue WHERE company_key = ? AND title_key = ? AND location_key = ? AND post_date_key = ? LIMIT 1',
+      [companyKey, titleKey, locationKey, postDateKey],
       (checkErr, row) => {
         if (checkErr) return reject(checkErr);
         if (row) return resolve({ id: row.id, skipped: true, score, tier, hits, title: job.title });
 
         db.run(
-          `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req, is_bigtech, company_key, title_key, location_key)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?)`,
-          [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req, job.is_bigtech ? 1 : 0, companyKey, titleKey, locationKey],
+          `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req, is_bigtech, company_key, title_key, location_key, post_date_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?, ?)`,
+          [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req, job.is_bigtech ? 1 : 0, companyKey, titleKey, locationKey, postDateKey],
           function (err) {
             if (err) return reject(err);
             resolve({ id: this.lastID, score, tier, hits, title: job.title });
