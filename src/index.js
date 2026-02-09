@@ -39,6 +39,10 @@ const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
 async function ingestJob(job) {
   const { db } = require('./lib/db');
 
+  if (!job.company || !job.title) {
+    return { skipped: true, reason: 'missing company/title' };
+  }
+
   const { score, tier, hits } = scoreJD(job.jd_text, job.post_date, job.title);
   const years_req = extractYearsRequirement(job.jd_text);
   const companyKey = (job.company || '').trim().toLowerCase();
