@@ -95,37 +95,61 @@ export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
 
 ## API
 
+### UI + Health
+
+- `GET /`
+  - Serves the web UI.
+- `GET /health`
+  - Health and runtime config summary.
+
 ### Jobs
 
+- `POST /jobs/ingest`
+  - Manually insert one job.
+  - Body: `{ company, title, location?, post_date?, source?, url?, jd_text? }`
+  - Returns `{ id, score, tier, hits }`.
 - `GET /jobs`
-  - Filters: `tier`, `status`, `source`, `q`, `minScore`, `bigtech=true`, `hasErrors=true`, `seenWithinDays`
-  - `filtered` jobs are hidden by default unless `includeFiltered=true`
-  - Pagination: `page`, `pageSize`
-  - Returns `{ items, meta }`
-  - Legacy mode: `GET /jobs?legacy=true` returns array only
+  - List jobs with filters.
+  - Query params: `tier`, `status`, `source`, `q`, `minScore`, `sort`, `bigtech=true`, `hasErrors=true`, `seenWithinDays`, `includeFiltered=true`, `page`, `pageSize`.
+  - Returns `{ items, meta }`.
+  - Legacy mode: `GET /jobs?legacy=true` returns array only.
 - `GET /jobs/:id/provenance`
-  - Returns source history + event trail for a job
+  - Returns selected job + source history + event trail.
 - `POST /jobs/:id/status`
-  - Body: `{ "status": "approved" | "skipped" | "applied" }`
-  - Returns updated job snapshot and optional `syncWarning`
+  - Update workflow status.
+  - Body: `{ "status": "inbox" | "approved" | "skipped" | "applied" }`
+  - Returns `{ updated, job, syncWarning }`.
+- `POST /jobs/company/skip`
+  - Bulk-skip by company.
+  - Body: `{ "company": "Company Name" }`
+  - Returns `{ updated }`.
 
 ### Scheduler / Ingestion
 
-- `POST /api/scheduler/run`
-  - Manually trigger core run
-  - Returns `{ runId, status, accepted, message, summary }`
-- `POST /api/scheduler/run-serpapi`
-  - Manually trigger SerpAPI-only run (budget-capped)
-  - Returns `{ runId, status, accepted, message, summary }`
-- `GET /api/ingestion/runs?limit=20`
-  - List latest ingestion runs
 - `GET /api/scheduler/stats`
-  - Runtime scheduler/config diagnostics
+  - Runtime scheduler and feature flags.
+- `POST /api/scheduler/run`
+  - Trigger core ingestion.
+  - Optional body: `{ "llmMode": "auto" | "realtime" | "batch" }`
+  - Returns `{ runId, status, accepted, message, summary }`.
+- `POST /api/scheduler/run-serpapi`
+  - Trigger SerpAPI-only run.
+  - Optional body: `{ "llmMode": "auto" | "realtime" | "batch" }`
+  - Returns `{ runId, status, accepted, message, summary }`.
+- `POST /api/scheduler/cleanup-inbox`
+  - Re-evaluate existing inbox jobs with current filters.
+  - Optional body: `{ "llmMode": "auto" | "realtime" | "batch" }`
+  - Returns `{ runId, status, accepted, message, summary }`.
+- `GET /api/ingestion/runs?limit=20`
+  - List recent ingestion/cleanup runs.
+- `GET /api/ingestion/runs/:id/progress`
+  - Live or persisted progress for a run, including LLM counters.
 
-### Diagnostics
+### LLM Batch Ops
 
-- `GET /health`
-  - Includes enabled source counts and missing config hints
+- `POST /api/llm/batch/requeue-failed`
+  - Requeue jobs whose batch review failed.
+  - Returns `{ queued }`.
 
 ## Notes
 
