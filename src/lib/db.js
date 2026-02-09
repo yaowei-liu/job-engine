@@ -28,10 +28,14 @@ function initDB() {
           tier TEXT DEFAULT 'B',
           status TEXT DEFAULT 'inbox',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(company, title, url)
         )
       `, (err) => {
         if (err) return reject(err);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_tier ON job_queue(tier)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_post_date ON job_queue(post_date DESC)`);
         db.run(`
           CREATE TABLE IF NOT EXISTS preferences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
