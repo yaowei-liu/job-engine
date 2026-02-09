@@ -47,12 +47,14 @@ function buildUrl(query, location = DEFAULT_LOCATION) {
   const params = new URLSearchParams({
     engine: 'google_jobs',
     q: query,
-    location,
     google_domain: process.env.SERPAPI_DOMAIN || 'google.ca',
     hl: process.env.SERPAPI_HL || 'en',
     gl: process.env.SERPAPI_GL || 'ca',
     api_key: process.env.SERPAPI_KEY || '',
   });
+
+  if (location) params.set('location', location);
+
   return `https://serpapi.com/search.json?${params.toString()}`;
 }
 
