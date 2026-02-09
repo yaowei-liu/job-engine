@@ -6,7 +6,8 @@ const { initDB } = require('./lib/db');
 const jobsRouter = require('./routes/jobs');
 const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS } = require('./lib/sources/greenhouse');
 const { fetchAll: fetchSerp } = require('./lib/sources/serpapi');
-const { loadSearchConfig, buildQueriesFromConfig } = require('./lib/searchConfig');
+const { scoreJD } = require('./lib/score');
+const { extractYearsRequirement } = require('./lib/jdExtract');
 
 const app = express();
 app.use(express.json());
@@ -26,20 +27,21 @@ const SERP_QUERIES = (buildQueriesFromConfig(searchCfg) || [])
   )
   .filter(Boolean);
 
-const SERP_LOCATION = process.env.SERPAPI_LOCATION ? process.env.SERPAPI_LOCATION.trim() : undefined;
+const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
+
 
 // Ingest a single job into the queue
 async function ingestJob(job) {
   const { db } = require('./lib/db');
-  const { scoreJD } = require('./lib/score');
 
-  const { score, tier, hits } = scoreJD(job.jd_text, job.post_date);
+  const { score, tier, hits } = scoreJD(job.jd_text, job.post_date, job.title);
+  const years_req = extractYearsRequirement(job.jd_text);
 
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox')`,
-      [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier],
+      `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?)`,
+      [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req],
       function (err) {
         if (err) return reject(err);
         resolve({ id: this.lastID, score, tier, hits, title: job.title });

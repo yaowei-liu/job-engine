@@ -11,6 +11,20 @@ if (!fs.existsSync(dbDir)) {
 
 const db = new sqlite3.Database(DB_PATH);
 
+function ensureColumn(table, column, type) {
+  return new Promise((resolve, reject) => {
+    db.all(`PRAGMA table_info(${table})`, (err, rows) => {
+      if (err) return reject(err);
+      const exists = rows.some((r) => r.name === column);
+      if (exists) return resolve();
+      db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err2) => {
+        if (err2) return reject(err2);
+        resolve();
+      });
+    });
+  });
+}
+
 function initDB() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
@@ -31,11 +45,19 @@ function initDB() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(company, title, url)
         )
-      `, (err) => {
+      `, async (err) => {
         if (err) return reject(err);
         db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_tier ON job_queue(tier)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_job_queue_post_date ON job_queue(post_date DESC)`);
+
+        try {
+          await ensureColumn('job_queue', 'hits', 'TEXT');
+          await ensureColumn('job_queue', 'years_req', 'TEXT');
+        } catch (e) {
+          return reject(e);
+        }
+
         db.run(`
           CREATE TABLE IF NOT EXISTS preferences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

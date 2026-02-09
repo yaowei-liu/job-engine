@@ -71,6 +71,17 @@ router.post('/:id/status', (req, res) => {
   });
 });
 
+// Skip all jobs from a company
+router.post('/company/skip', (req, res) => {
+  const { company } = req.body || {};
+  if (!company) return res.status(400).json({ error: 'company required' });
+
+  db.run('UPDATE job_queue SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE company = ?', ['skipped', company], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ updated: this.changes });
+  });
+});
+
 async function syncToPersonalDashboard(jobId) {
   const { db: pdDB } = require('../lib/pd');
   const { sendWebhook } = require('../lib/webhook');
