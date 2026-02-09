@@ -19,7 +19,7 @@ const DEFAULT_BOARDS = [
  * @returns {string|null}
  */
 function extractBoardToken(url) {
-  const match = url.match(/boards\.greenhouse\.io\/([a-z0-9]+)/);
+  const match = url.match(/boards\.greenhouse\.io\/([A-Za-z0-9-]+)/);
   return match ? match[1] : null;
 }
 
