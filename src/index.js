@@ -4,14 +4,18 @@ const express = require('express');
 const path = require('path');
 const { initDB } = require('./lib/db');
 const jobsRouter = require('./routes/jobs');
-const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS } = require('./lib/sources/greenhouse');
+const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS: GH_BOARDS } = require('./lib/sources/greenhouse');
+const { fetchAll: fetchLever, DEFAULT_BOARDS: LEVER_BOARDS } = require('./lib/sources/lever');
 const { fetchAll: fetchSerp } = require('./lib/sources/serpapi');
 
 const app = express();
 app.use(express.json());
 
 // Config
-const TARGET_BOARDS = (process.env.GREENHOUSE_BOARDS || DEFAULT_BOARDS.join(','))
+const TARGET_BOARDS = (process.env.GREENHOUSE_BOARDS || GH_BOARDS.join(','))
+  .split(',')
+  .filter(Boolean);
+const LEVER_TARGETS = (process.env.LEVER_BOARDS || LEVER_BOARDS.join(','))
   .split(',')
   .filter(Boolean);
 const SERP_QUERIES = (process.env.SERPAPI_QUERIES || '')
@@ -46,14 +50,15 @@ async function runFetcher() {
   const start = Date.now();
 
   try {
-    const [greenhouseJobs, serpJobs] = await Promise.all([
+    const [greenhouseJobs, leverJobs, serpJobs] = await Promise.all([
       TARGET_BOARDS.length ? fetchGreenhouse(TARGET_BOARDS) : Promise.resolve([]),
+      LEVER_TARGETS.length ? fetchLever(LEVER_TARGETS) : Promise.resolve([]),
       SERP_QUERIES.length ? fetchSerp(SERP_QUERIES, SERP_LOCATION) : Promise.resolve([]),
     ]);
 
-    console.log(`[Scheduler] Sources: greenhouse=${greenhouseJobs.length}, serpapi=${serpJobs.length}`);
+    console.log(`[Scheduler] Sources: greenhouse=${greenhouseJobs.length}, lever=${leverJobs.length}, serpapi=${serpJobs.length}`);
 
-    const jobs = [...greenhouseJobs, ...serpJobs];
+    const jobs = [...greenhouseJobs, ...leverJobs, ...serpJobs];
     let ingested = 0;
     let skipped = 0;
 
@@ -95,6 +100,7 @@ async function startScheduler() {
   app.get('/api/scheduler/stats', (req, res) => {
     res.json({
       greenhouseBoards: TARGET_BOARDS.length,
+      leverBoards: LEVER_TARGETS.length,
       serpQueries: SERP_QUERIES.length,
       intervalMs: FETCH_INTERVAL,
       nextRunIn: scheduled ? 'N/A (interval active)' : 'stopped',
