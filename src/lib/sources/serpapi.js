@@ -44,12 +44,21 @@ function normalizePostedAt(postedAt) {
   return new Date(now.getTime() - delta).toISOString().slice(0, 10);
 }
 
+function isGoogleUrl(link) {
+  try {
+    const u = new URL(link);
+    return u.hostname.endsWith('google.com') || u.hostname.endsWith('google.ca') || u.hostname.endsWith('google.co.uk') || u.hostname.includes('.google.');
+  } catch {
+    return false;
+  }
+}
+
 function pickDirectUrl(job) {
   const apply = job.apply_options || [];
-  const direct = apply.find((opt) => opt?.link && !opt.link.includes('google.com'));
+  const direct = apply.find((opt) => opt?.link && !isGoogleUrl(opt.link));
   if (direct?.link) return direct.link;
 
-  const related = (job.related_links || []).find((opt) => opt?.link && !opt.link.includes('google.com'));
+  const related = (job.related_links || []).find((opt) => opt?.link && !isGoogleUrl(opt.link));
   if (related?.link) return related.link;
 
   return job.related_links?.[0]?.link || job.share_link || null;
