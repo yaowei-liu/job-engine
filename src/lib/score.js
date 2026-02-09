@@ -37,9 +37,10 @@ function scoreJD(jdText, postDateIso) {
     else if (ageHours <= 24*7) { score += rules.freshness.days7; hits.push('+fresh:7d'); }
   }
 
-  // Hard filter for senior roles
+  // Hard filter for senior roles (word-boundary to avoid false positives)
   const hardFilters = ['senior', 'lead', 'staff', 'principal', 'manager'];
-  if (hardFilters.some((kw) => text.includes(kw))) {
+  const hardRegex = new RegExp(`\\b(${hardFilters.join('|')})\\b`, 'i');
+  if (hardRegex.test(text)) {
     score -= 100;
     tier = 'C';
     hits.push('hard:senior');
