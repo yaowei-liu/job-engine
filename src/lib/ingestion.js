@@ -81,6 +81,14 @@ function payloadHash(job = {}) {
   return crypto.createHash('sha1').update(JSON.stringify(normalizeJob(job))).digest('hex');
 }
 
+function isUniqueConstraintError(err) {
+  return (
+    !!err
+    && String(err.code || '').toUpperCase() === 'SQLITE_CONSTRAINT'
+    && /UNIQUE constraint failed/i.test(String(err.message || ''))
+  );
+}
+
 async function createRun(triggerType = 'manual') {
   const { dbRun } = getDB();
   const result = await dbRun(
@@ -170,17 +178,29 @@ async function ingestJob(job, runId) {
 
   const admissionStatus = finalFit.admittedToInbox ? 'inbox' : 'filtered';
 
-  const existing = await dbGet(
-    `SELECT id FROM job_queue WHERE canonical_fingerprint = ? LIMIT 1`,
-    [fingerprint.value]
-  );
+  async function findExistingJobId() {
+    const existing = await dbGet(
+      `SELECT id
+       FROM job_queue
+       WHERE canonical_fingerprint = ?
+          OR (company_key = ? AND title_key = ? AND location_key = ? AND post_date_key = ?)
+          OR (company = ? AND title = ? AND COALESCE(url, '') = COALESCE(?, ''))
+       LIMIT 1`,
+      [
+        fingerprint.value,
+        companyKey,
+        titleKey,
+        locationKey,
+        postDateKey,
+        normalized.company,
+        normalized.title,
+        normalized.url,
+      ]
+    );
+    return existing?.id || null;
+  }
 
-  let jobId = null;
-  let deduped = false;
-
-  if (existing?.id) {
-    deduped = true;
-    jobId = existing.id;
+  async function updateExistingJob(existingJobId) {
     await dbRun(
       `UPDATE job_queue
        SET company = ?, title = ?, location = ?, post_date = ?, source = ?, url = ?, jd_text = ?, score = ?, tier = ?,
@@ -219,11 +239,19 @@ async function ingestJob(job, runId) {
         finalFit.admittedToInbox ? 0 : 1,
         finalFit.llmConfidence,
         JSON.stringify(finalFit.missingMustHave || []),
-        jobId,
+        existingJobId,
       ]
     );
+  }
+
+  let jobId = await findExistingJobId();
+  let deduped = !!jobId;
+
+  if (deduped) {
+    await updateExistingJob(jobId);
   } else {
-    const inserted = await dbRun(
+    try {
+      const inserted = await dbRun(
       `INSERT INTO job_queue (
         company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req,
         is_bigtech, company_key, title_key, location_key, post_date_key, canonical_fingerprint,
@@ -261,7 +289,14 @@ async function ingestJob(job, runId) {
         JSON.stringify(finalFit.missingMustHave || []),
       ]
     );
-    jobId = inserted.lastID;
+      jobId = inserted.lastID;
+    } catch (err) {
+      if (!isUniqueConstraintError(err)) throw err;
+      jobId = await findExistingJobId();
+      if (!jobId) throw err;
+      deduped = true;
+      await updateExistingJob(jobId);
+    }
   }
 
   await dbRun(
