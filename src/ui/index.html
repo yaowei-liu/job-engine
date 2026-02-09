@@ -220,6 +220,8 @@
       pendingUndo: null,
       undoTimer: null,
       undoCountdownTimer: null,
+      loadSeq: 0,
+      countsSeq: 0,
     };
 
     const el = {
@@ -472,6 +474,7 @@
     }
 
     async function loadStageCounts() {
+      const countsId = ++state.countsSeq;
       try {
         const stages = ['inbox', 'approved', 'applied', 'archive'];
         const requests = stages.map(async (stage) => {
@@ -484,6 +487,7 @@
           return [stage, data.meta?.total || 0];
         });
         const pairs = await Promise.all(requests);
+        if (countsId !== state.countsSeq) return;
         for (const [stage, total] of pairs) state.stageCounts[stage] = total;
         renderStageButtons();
       } catch {
@@ -492,6 +496,7 @@
     }
 
     async function load() {
+      const loadId = ++state.loadSeq;
       clearError();
       el.loading.classList.remove('hidden');
       applyQueryStateToUrl();
@@ -504,13 +509,16 @@
         const res = await fetch(`/jobs?${params.toString()}`);
         if (!res.ok) throw new Error(`Failed to load jobs (${res.status})`);
         const data = await res.json();
+        if (loadId !== state.loadSeq) return;
         state.jobs = data.items || [];
         state.total = data.meta?.total || 0;
         if (state.selectedIndex >= state.jobs.length) state.selectedIndex = Math.max(0, state.jobs.length - 1);
         renderList();
       } catch (err) {
+        if (loadId !== state.loadSeq) return;
         showError(err.message || 'Failed to load jobs');
       } finally {
+        if (loadId !== state.loadSeq) return;
         el.loading.classList.add('hidden');
         loadRuns();
         loadStageCounts();
@@ -540,6 +548,13 @@
       const card = el.list.querySelector(`.job-card[data-id="${id}"]`);
       const job = state.jobs.find((j) => j.id === Number(id));
       const prevStatus = job?.status || STAGE_TO_STATUS[state.stage] || 'inbox';
+      const statusLabel = status === 'approved'
+        ? 'approved'
+        : status === 'skipped'
+          ? 'archive'
+          : status === 'applied'
+            ? 'applied'
+            : status;
       if (card) {
         card.classList.add(`choice-${status}`);
       }
@@ -560,7 +575,7 @@
           jobId: Number(id),
           previousStatus: prevStatus,
           newStatus: status,
-          message: `${job?.company || 'Job'} moved to ${status}.`,
+          message: `${job?.company || 'Job'} moved to ${statusLabel}.`,
         });
       }
       el.stageSummary.classList.add('pulse-notice');
