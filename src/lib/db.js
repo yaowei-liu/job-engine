@@ -103,6 +103,11 @@ function initDB() {
           await ensureColumn('job_queue', 'rejected_by_quality', 'INTEGER DEFAULT 0');
           await ensureColumn('job_queue', 'llm_confidence', 'REAL');
           await ensureColumn('job_queue', 'llm_missing_must_have', 'TEXT');
+          await ensureColumn('job_queue', 'llm_review_state', 'TEXT');
+          await ensureColumn('job_queue', 'llm_pending_batch_id', 'TEXT');
+          await ensureColumn('job_queue', 'llm_pending_custom_id', 'TEXT');
+          await ensureColumn('job_queue', 'llm_review_updated_at', 'DATETIME');
+          await ensureColumn('job_queue', 'llm_review_error', 'TEXT');
         } catch (e) {
           return reject(e);
         }
@@ -211,6 +216,44 @@ function initDB() {
               )
             `);
             await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_fit_cache_updated_at ON llm_fit_cache(updated_at DESC)`);
+
+            await dbRun(`
+              CREATE TABLE IF NOT EXISTS llm_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER,
+                batch_id TEXT NOT NULL UNIQUE,
+                status TEXT DEFAULT 'submitted',
+                model TEXT,
+                input_file_id TEXT,
+                output_file_id TEXT,
+                error_file_id TEXT,
+                error_text TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME,
+                failed_at DATETIME
+              )
+            `);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_batches_run_id ON llm_batches(run_id)`);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_batches_status ON llm_batches(status)`);
+
+            await dbRun(`
+              CREATE TABLE IF NOT EXISTS llm_batch_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER,
+                batch_id TEXT,
+                job_id INTEGER,
+                cache_key TEXT,
+                custom_id TEXT NOT NULL UNIQUE,
+                state TEXT DEFAULT 'queued',
+                error_text TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_batch_items_run_id ON llm_batch_items(run_id)`);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_batch_items_batch_id ON llm_batch_items(batch_id)`);
+            await dbRun(`CREATE INDEX IF NOT EXISTS idx_llm_batch_items_job_id ON llm_batch_items(job_id)`);
             resolve();
           } catch (e) {
             reject(e);

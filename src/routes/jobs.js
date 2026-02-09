@@ -105,7 +105,8 @@ router.get('/', async (req, res) => {
       `SELECT id, company, title, location, post_date, source, url, score, tier, status, hits, years_req,
               is_bigtech, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint,
               fit_score, fit_label, fit_source, fit_reason_codes, quality_bucket, rejected_by_quality,
-              llm_confidence, llm_missing_must_have
+              llm_confidence, llm_missing_must_have, llm_review_state, llm_pending_batch_id,
+              llm_pending_custom_id, llm_review_updated_at, llm_review_error
        FROM job_queue
        ${whereSql}
        ${orderSql}
@@ -136,7 +137,8 @@ router.get('/:id/provenance', async (req, res) => {
   try {
     const job = await dbGet(
       `SELECT id, company, title, source, url, first_seen_at, last_seen_at, dedup_reason, canonical_fingerprint,
-              fit_score, fit_label, fit_source, fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have
+              fit_score, fit_label, fit_source, fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have,
+              llm_review_state, llm_pending_batch_id, llm_pending_custom_id, llm_review_updated_at, llm_review_error
        FROM job_queue WHERE id = ?`,
       [id]
     );

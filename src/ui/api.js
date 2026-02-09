@@ -16,6 +16,11 @@ export async function fetchLatestRun() {
   return data.items?.[0] || null;
 }
 
+export async function fetchRunProgress(runId) {
+  const res = await fetch(`/api/ingestion/runs/${runId}/progress`);
+  return parseJsonOrThrow(res, `Failed to load run progress (${res.status})`);
+}
+
 export async function fetchStageCount(params) {
   const p = new URLSearchParams(params);
   p.set('page', '1');
@@ -40,12 +45,20 @@ export async function fetchProvenance(id) {
   return parseJsonOrThrow(res, `Failed to load provenance (${res.status})`);
 }
 
-export async function triggerIngestionRun() {
-  const res = await fetch('/api/scheduler/run', { method: 'POST' });
+export async function triggerIngestionRun(llmMode = 'auto') {
+  const res = await fetch('/api/scheduler/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ llmMode }),
+  });
   return parseJsonOrThrow(res, 'Failed to run ingestion');
 }
 
-export async function triggerInboxCleanupRun() {
-  const res = await fetch('/api/scheduler/cleanup-inbox', { method: 'POST' });
+export async function triggerInboxCleanupRun(llmMode = 'auto') {
+  const res = await fetch('/api/scheduler/cleanup-inbox', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ llmMode }),
+  });
   return parseJsonOrThrow(res, 'Failed to cleanup inbox');
 }

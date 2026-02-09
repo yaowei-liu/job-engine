@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { scoreJD } = require('./score');
 const { extractYearsRequirement } = require('./jdExtract');
 const { evaluateDeterministicFit } = require('./qualityGate');
-const { classifyWithLLM } = require('./llmFit');
+const { classifyWithLLM, queueBatchClassification } = require('./llmFit');
 
 function getDB() {
   return require('./db');
@@ -86,7 +86,9 @@ async function evaluateJobFit({
   profile = {},
   qualityOptions = {},
   runId = null,
+  jobId = null,
 } = {}) {
+  const llmMode = String(qualityOptions?.llm?.mode || 'realtime').toLowerCase();
   const detFit = evaluateDeterministicFit(normalizedJob, profile, qualityOptions);
   let finalFit = {
     fitScore: detFit.fitScore,
@@ -98,9 +100,82 @@ async function evaluateJobFit({
     llmConfidence: null,
     missingMustHave: [],
     llmUsed: false,
+    llmEligible: !!detFit.needsLLM,
+    llmAttempted: false,
+    llmSkippedReason: null,
+    llmQueued: false,
+    llmNeedsQueueAfterUpsert: false,
+    llmPendingCustomId: null,
   };
 
   if (detFit.needsLLM) {
+    if (llmMode === 'batch') {
+      if (!jobId) {
+        return {
+          ...finalFit,
+          admittedToInbox: true,
+          qualityBucket: 'pending_llm',
+          llmQueued: true,
+          llmNeedsQueueAfterUpsert: true,
+          llmAttempted: true,
+          llmSkippedReason: 'batch_deferred_until_job_id',
+        };
+      }
+
+      const queued = await queueBatchClassification({
+        runId,
+        jobId,
+        job: normalizedJob,
+        profile,
+        options: qualityOptions.llm || {},
+      });
+
+      if (!queued.skipped) {
+        const llmAdmitThreshold = Math.max(1, parseInt(String(qualityOptions.llmAdmitThreshold || '65'), 10));
+        const admittedByLLM = queued.fitLabel === 'high' || queued.fitScore >= llmAdmitThreshold;
+        return {
+          fitScore: queued.fitScore,
+          fitLabel: queued.fitLabel,
+          fitSource: queued.cached ? 'llm_cache' : 'llm',
+          qualityBucket: admittedByLLM ? 'high' : 'filtered',
+          admittedToInbox: admittedByLLM,
+          reasonCodes: (detFit.reasonCodes || []).concat((queued.reasonCodes || []).map((r) => `llm:${r}`)),
+          llmConfidence: queued.confidence,
+          missingMustHave: queued.missingMustHave || [],
+          llmUsed: true,
+          llmEligible: true,
+          llmAttempted: true,
+          llmSkippedReason: null,
+          llmQueued: false,
+          llmNeedsQueueAfterUpsert: false,
+          llmPendingCustomId: null,
+        };
+      }
+
+      if (queued.reason !== 'batch_queued') {
+        return {
+          ...finalFit,
+          llmQueued: false,
+          llmNeedsQueueAfterUpsert: false,
+          llmAttempted: true,
+          llmSkippedReason: queued.reason || 'batch_queue_failed',
+          llmPendingCustomId: null,
+        };
+      }
+
+      return {
+        ...finalFit,
+        admittedToInbox: true,
+        qualityBucket: 'pending_llm',
+        llmQueued: true,
+        llmNeedsQueueAfterUpsert: false,
+        llmAttempted: true,
+        llmSkippedReason: queued.reason || 'batch_queued',
+        llmPendingCustomId: queued.customId || null,
+      };
+    }
+
+    finalFit.llmAttempted = true;
     const llm = await classifyWithLLM({
       job: normalizedJob,
       profile,
@@ -121,9 +196,13 @@ async function evaluateJobFit({
         llmConfidence: llm.confidence,
         missingMustHave: llm.missingMustHave || [],
         llmUsed: true,
+        llmEligible: true,
+        llmAttempted: true,
+        llmSkippedReason: null,
       };
     } else {
       finalFit.reasonCodes = (detFit.reasonCodes || []).concat([`llm_skipped:${llm.reason}`]);
+      finalFit.llmSkippedReason = llm.reason || 'unknown';
     }
   }
 
@@ -190,9 +269,10 @@ async function ingestJob(job, runId) {
     profile,
     qualityOptions,
     runId,
+    jobId: null,
   });
 
-  const admissionStatus = finalFit.admittedToInbox ? 'inbox' : 'filtered';
+  const admissionStatus = (finalFit.admittedToInbox || finalFit.llmQueued) ? 'inbox' : 'filtered';
 
   async function findExistingJobId() {
     const existing = await dbGet(
@@ -224,6 +304,7 @@ async function ingestJob(job, runId) {
            hits = ?, years_req = ?, is_bigtech = ?, company_key = ?, title_key = ?, location_key = ?, post_date_key = ?,
            canonical_fingerprint = ?, dedup_reason = ?, last_run_id = ?, fit_score = ?, fit_label = ?, fit_source = ?,
            fit_reason_codes = ?, quality_bucket = ?, rejected_by_quality = ?, llm_confidence = ?, llm_missing_must_have = ?,
+           llm_review_state = ?, llm_pending_batch_id = ?, llm_pending_custom_id = ?, llm_review_updated_at = ?, llm_review_error = ?,
            last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
@@ -255,6 +336,11 @@ async function ingestJob(job, runId) {
         finalFit.admittedToInbox ? 0 : 1,
         finalFit.llmConfidence,
         JSON.stringify(finalFit.missingMustHave || []),
+        finalFit.llmQueued ? 'pending' : (finalFit.llmUsed ? 'completed' : 'none'),
+        null,
+        finalFit.llmPendingCustomId,
+        finalFit.llmQueued || finalFit.llmUsed ? new Date().toISOString() : null,
+        finalFit.llmSkippedReason ? String(finalFit.llmSkippedReason).slice(0, 400) : null,
         existingJobId,
       ]
     );
@@ -272,8 +358,9 @@ async function ingestJob(job, runId) {
         company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req,
         is_bigtech, company_key, title_key, location_key, post_date_key, canonical_fingerprint,
         first_seen_at, last_seen_at, last_run_id, dedup_reason, fit_score, fit_label, fit_source,
-        fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        fit_reason_codes, quality_bucket, rejected_by_quality, llm_confidence, llm_missing_must_have,
+        llm_review_state, llm_pending_batch_id, llm_pending_custom_id, llm_review_updated_at, llm_review_error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalized.company,
         normalized.title,
@@ -303,6 +390,11 @@ async function ingestJob(job, runId) {
         finalFit.admittedToInbox ? 0 : 1,
         finalFit.llmConfidence,
         JSON.stringify(finalFit.missingMustHave || []),
+        finalFit.llmQueued ? 'pending' : (finalFit.llmUsed ? 'completed' : 'none'),
+        null,
+        finalFit.llmPendingCustomId,
+        finalFit.llmQueued || finalFit.llmUsed ? new Date().toISOString() : null,
+        finalFit.llmSkippedReason ? String(finalFit.llmSkippedReason).slice(0, 400) : null,
       ]
     );
       jobId = inserted.lastID;
@@ -312,6 +404,54 @@ async function ingestJob(job, runId) {
       if (!jobId) throw err;
       deduped = true;
       await updateExistingJob(jobId);
+    }
+  }
+
+  if (finalFit.llmNeedsQueueAfterUpsert && jobId) {
+    const queuedFit = await evaluateJobFit({
+      normalizedJob: normalized,
+      profile,
+      qualityOptions,
+      runId,
+      jobId,
+    });
+
+    if (queuedFit.llmQueued) {
+      await dbRun(
+        `UPDATE job_queue
+         SET llm_review_state = 'pending',
+             llm_pending_custom_id = ?,
+             llm_review_error = ?,
+             llm_review_updated_at = CURRENT_TIMESTAMP,
+             status = CASE WHEN status IN ('approved', 'applied', 'skipped') THEN status ELSE 'inbox' END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [queuedFit.llmPendingCustomId || null, queuedFit.llmSkippedReason || null, jobId]
+      );
+    } else if (queuedFit.llmUsed) {
+      const nextStatus = queuedFit.admittedToInbox ? 'inbox' : 'filtered';
+      await dbRun(
+        `UPDATE job_queue
+         SET fit_score = ?, fit_label = ?, fit_source = ?, fit_reason_codes = ?, quality_bucket = ?,
+             rejected_by_quality = ?, llm_confidence = ?, llm_missing_must_have = ?, llm_review_state = 'completed',
+             llm_pending_batch_id = NULL, llm_pending_custom_id = NULL, llm_review_error = NULL,
+             llm_review_updated_at = CURRENT_TIMESTAMP,
+             status = CASE WHEN status IN ('approved', 'applied', 'skipped') THEN status ELSE ? END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [
+          queuedFit.fitScore,
+          queuedFit.fitLabel,
+          queuedFit.fitSource,
+          JSON.stringify(queuedFit.reasonCodes || []),
+          queuedFit.qualityBucket,
+          queuedFit.admittedToInbox ? 0 : 1,
+          queuedFit.llmConfidence,
+          JSON.stringify(queuedFit.missingMustHave || []),
+          nextStatus,
+          jobId,
+        ]
+      );
     }
   }
 
@@ -333,6 +473,7 @@ async function ingestJob(job, runId) {
       sourceJobKey: sourceKey,
       qualityBucket: finalFit.qualityBucket,
       admittedToInbox: finalFit.admittedToInbox,
+      llmQueued: finalFit.llmQueued || false,
     },
   });
 
@@ -347,6 +488,10 @@ async function ingestJob(job, runId) {
     qualityBucket: finalFit.qualityBucket,
     admittedToInbox: finalFit.admittedToInbox,
     llmUsed: finalFit.llmUsed,
+    llmEligible: finalFit.llmEligible,
+    llmAttempted: finalFit.llmAttempted,
+    llmSkippedReason: finalFit.llmSkippedReason,
+    llmQueued: finalFit.llmQueued,
   };
 }
 

@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const { initDB, dbAll, dbRun } = require('./lib/db');
+const { initDB, dbAll, dbGet, dbRun } = require('./lib/db');
 const jobsRouter = require('./routes/jobs');
 const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS: GH_BOARDS } = require('./lib/sources/greenhouse');
 const { fetchAll: fetchLever, DEFAULT_BOARDS: LEVER_BOARDS } = require('./lib/sources/lever');
@@ -21,6 +21,8 @@ const {
 const { filterJobsByFreshness } = require('./lib/freshness');
 const { getSerpApiRunBudget, recordUsage } = require('./lib/serpapiBudget');
 const { addJobEvent, createRun, evaluateJobFit, finalizeRun, ingestJob, normalizeJob } = require('./lib/ingestion');
+const { pollAndReconcileBatches, flushBatchForRun } = require('./lib/llmFit');
+const { evaluateDeterministicFit } = require('./lib/qualityGate');
 const { loadProfileConfig } = require('./lib/profileConfig');
 
 const app = express();
@@ -83,8 +85,18 @@ const LLM_DAILY_CAP = getIntSetting(process.env.LLM_DAILY_CAP, llmCfg.daily_cap,
 const LLM_MAX_PER_RUN = getIntSetting(process.env.LLM_MAX_PER_RUN, llmCfg.max_per_run, 30);
 const LLM_TIMEOUT_MS = getIntSetting(process.env.LLM_TIMEOUT_MS, llmCfg.timeout_ms, 15000);
 const LLM_MODEL = getStringSetting(process.env.LLM_MODEL, llmCfg.model, 'gpt-4o-mini');
+const LLM_BATCH_ENABLED = getBoolSetting(process.env.LLM_BATCH_ENABLED, llmCfg.batch_enabled, true);
+const LLM_BATCH_THRESHOLD = getIntSetting(process.env.LLM_BATCH_THRESHOLD, llmCfg.batch_threshold, 20);
+const LLM_BATCH_REALTIME_FALLBACK_COUNT = getIntSetting(
+  process.env.LLM_BATCH_REALTIME_FALLBACK_COUNT,
+  llmCfg.batch_realtime_fallback_count,
+  5
+);
+const LLM_BATCH_POLL_INTERVAL_SEC = getIntSetting(process.env.LLM_BATCH_POLL_INTERVAL_SEC, llmCfg.batch_poll_interval_sec, 30);
+const LLM_BATCH_MODEL = getStringSetting(process.env.LLM_BATCH_MODEL, llmCfg.batch_model, 'gpt-4o-mini');
+const LLM_BATCH_COMPLETION_WINDOW = getStringSetting(process.env.LLM_BATCH_COMPLETION_WINDOW, llmCfg.batch_completion_window, '24h');
 
-function buildQualityOptionsForRun() {
+function buildQualityOptionsForRun(llmMode = 'auto') {
   return {
     minInboxScore: QUALITY_MIN_INBOX_SCORE,
     borderlineMin: QUALITY_BORDERLINE_MIN,
@@ -97,8 +109,43 @@ function buildQualityOptionsForRun() {
       maxPerRun: LLM_MAX_PER_RUN,
       timeoutMs: LLM_TIMEOUT_MS,
       model: LLM_MODEL,
+      mode: llmMode,
+      batchEnabled: LLM_BATCH_ENABLED,
+      batchThreshold: LLM_BATCH_THRESHOLD,
+      batchRealtimeFallbackCount: LLM_BATCH_REALTIME_FALLBACK_COUNT,
+      batchModel: LLM_BATCH_MODEL,
+      batchCompletionWindow: LLM_BATCH_COMPLETION_WINDOW,
     },
   };
+}
+
+function clampLlmMode(value = 'auto') {
+  const mode = String(value || 'auto').toLowerCase();
+  if (['auto', 'realtime', 'batch'].includes(mode)) return mode;
+  return 'auto';
+}
+
+function assignLlmModes(jobs = [], qualityOptions = {}, llmMode = 'auto') {
+  const mode = clampLlmMode(llmMode);
+  if (!jobs.length) return [];
+  const out = jobs.map((job) => ({ ...job, __llm_mode: mode === 'auto' ? 'realtime' : mode }));
+  if (mode !== 'auto') return out;
+  const llmEnabled = String(qualityOptions?.llm?.enabled || 'false').toLowerCase() === 'true';
+  const batchEnabled = !!qualityOptions?.llm?.batchEnabled;
+  if (!llmEnabled || !batchEnabled) return out;
+
+  const threshold = Math.max(1, parseInt(String(qualityOptions?.llm?.batchThreshold || 20), 10));
+  const realtimeFallback = Math.max(0, parseInt(String(qualityOptions?.llm?.batchRealtimeFallbackCount || 5), 10));
+  const borderlineIndexes = [];
+  for (let i = 0; i < out.length; i += 1) {
+    const fit = evaluateDeterministicFit(normalizeJob(out[i]), profile, qualityOptions);
+    if (fit.needsLLM) borderlineIndexes.push(i);
+  }
+  if (borderlineIndexes.length < threshold) return out;
+  borderlineIndexes.forEach((idx, pos) => {
+    out[idx].__llm_mode = pos < realtimeFallback ? 'realtime' : 'batch';
+  });
+  return out;
 }
 
 function isTorontoOrRemote(location) {
@@ -141,8 +188,86 @@ let isFetching = false;
 let isBigTechFetching = false;
 let isSerpFetching = false;
 let isCleanupRunning = false;
+const runProgress = new Map();
+const RUN_PROGRESS_TTL_MS = 5 * 60 * 1000;
 
-async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs, qualityOptions = {} }) {
+function initLlmProgress() {
+  return {
+    eligible: 0,
+    attempted: 0,
+    completed: 0,
+    skipped: 0,
+    inFlight: 0,
+    percent: 0,
+  };
+}
+
+function normalizeLlmProgress(input = {}) {
+  const eligible = Math.max(0, Number(input.eligible) || 0);
+  const attempted = Math.max(0, Number(input.attempted) || 0);
+  const completed = Math.max(0, Number(input.completed) || 0);
+  const skipped = Math.max(0, Number(input.skipped) || 0);
+  const resolved = completed + skipped;
+  const inFlight = Math.max(0, attempted - resolved);
+  const percent = eligible > 0 ? Math.min(100, Math.round((resolved / eligible) * 100)) : 0;
+
+  return {
+    eligible,
+    attempted,
+    completed,
+    skipped,
+    inFlight,
+    percent,
+  };
+}
+
+function setRunProgress(runId, values = {}) {
+  const current = runProgress.get(runId) || { runId };
+  const merged = { ...current, ...values };
+  merged.llm = normalizeLlmProgress(merged.llm || {});
+  merged.updatedAt = new Date().toISOString();
+  runProgress.set(runId, merged);
+}
+
+function bootstrapRunProgress(runId, { trigger, label, summary }) {
+  setRunProgress(runId, {
+    runId,
+    trigger,
+    label,
+    status: 'running',
+    totals: { ...(summary?.totals || {}) },
+    quality: { ...(summary?.quality || {}) },
+    llm: { ...(summary?.llm || initLlmProgress()) },
+    startedAt: summary?.startedAt || new Date().toISOString(),
+    finishedAt: null,
+  });
+}
+
+function syncRunProgress(runId, summary, status = 'running') {
+  if (!runProgress.has(runId)) return;
+  setRunProgress(runId, {
+    status,
+    totals: { ...(summary?.totals || {}) },
+    quality: { ...(summary?.quality || {}) },
+    llm: { ...(summary?.llm || initLlmProgress()) },
+    finishedAt: summary?.finishedAt || null,
+  });
+}
+
+function pruneRunProgress() {
+  const now = Date.now();
+  for (const [runId, progress] of runProgress.entries()) {
+    const isRunning = progress.status === 'running';
+    const updatedAtMs = Date.parse(progress.updatedAt || progress.finishedAt || progress.startedAt || '');
+    if (!isRunning && Number.isFinite(updatedAtMs) && now - updatedAtMs > RUN_PROGRESS_TTL_MS) {
+      runProgress.delete(runId);
+    }
+  }
+}
+
+setInterval(pruneRunProgress, 60 * 1000).unref();
+
+async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs, qualityOptions = {}, llmMode = 'auto' }) {
   const runId = await createRun(triggerType);
   const start = Date.now();
   const runQualityOptions = qualityOptions || {};
@@ -167,9 +292,11 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       skipped: 0,
     },
     quality: qualitySummary,
+    llm: initLlmProgress(),
     sources: {},
     errors: [],
   };
+  bootstrapRunProgress(runId, { trigger: triggerType, label, summary });
 
   try {
     const sourceResults = await Promise.all(
@@ -199,8 +326,9 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
         summary.errors.push(`${r.source}: ${r.error}`);
       }
     }
+    syncRunProgress(runId, summary, 'running');
 
-    const jobs = transform(sourceResults.flatMap((r) => r.jobs));
+    const jobs = assignLlmModes(transform(sourceResults.flatMap((r) => r.jobs)), qualityOptions, llmMode);
 
     for (const job of jobs) {
       const source = (job.source || 'unknown').toLowerCase();
@@ -209,14 +337,32 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       }
 
       try {
-        const result = await ingestJob({ ...job, profile, quality_options: runQualityOptions }, runId);
+        const result = await ingestJob({
+          ...job,
+          profile,
+          quality_options: {
+            ...runQualityOptions,
+            llm: {
+              ...(runQualityOptions.llm || {}),
+              mode: job.__llm_mode || runQualityOptions?.llm?.mode || 'auto',
+            },
+          },
+        }, runId);
         if (result.skipped) {
           summary.totals.skipped += 1;
+          syncRunProgress(runId, summary, 'running');
           continue;
         }
         if (result.admittedToInbox) qualitySummary.admittedToInbox += 1;
         else qualitySummary.filteredOut += 1;
         if (result.llmUsed) qualitySummary.llmUsed += 1;
+        if (result.llmEligible) {
+          summary.llm.eligible += 1;
+          if (result.llmAttempted) summary.llm.attempted += 1;
+          if (result.llmUsed) summary.llm.completed += 1;
+          else if (result.llmQueued) summary.llm.batchQueued = (summary.llm.batchQueued || 0) + 1;
+          else summary.llm.skipped += 1;
+        }
         if (result.deduped) {
           summary.totals.deduped += 1;
           summary.sources[source].deduped += 1;
@@ -224,18 +370,29 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
           summary.totals.inserted += 1;
           summary.sources[source].inserted += 1;
         }
+        syncRunProgress(runId, summary, 'running');
       } catch (err) {
         summary.totals.failed += 1;
         summary.sources[source].failed += 1;
         summary.errors.push(`${source}: ${err.message}`);
+        syncRunProgress(runId, summary, 'running');
       }
     }
 
     summary.finishedAt = new Date().toISOString();
     summary.durationMs = Date.now() - start;
 
+    const batchFlush = await flushBatchForRun({ runId, options: runQualityOptions.llm || {} });
+    if (batchFlush?.batchId) {
+      summary.llm.batchSubmitted = batchFlush.submitted || 0;
+      summary.llm.batchId = batchFlush.batchId;
+    } else if (batchFlush?.error) {
+      summary.errors.push(`llm_batch: ${batchFlush.error}`);
+    }
+
     const status = summary.errors.length ? (summary.totals.inserted || summary.totals.deduped ? 'partial' : 'failed') : 'success';
     await finalizeRun(runId, status, summary, summary.errors.join(' | ') || null);
+    syncRunProgress(runId, summary, status);
 
     return {
       runId,
@@ -250,6 +407,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
     summary.errors.push(err.message);
 
     await finalizeRun(runId, 'failed', summary, err.message);
+    syncRunProgress(runId, summary, 'failed');
     return {
       runId,
       status: 'failed',
@@ -260,7 +418,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
   }
 }
 
-async function runFetcher(triggerType = 'manual') {
+async function runFetcher(triggerType = 'manual', opts = {}) {
   if (isFetching) {
     return {
       accepted: false,
@@ -269,12 +427,14 @@ async function runFetcher(triggerType = 'manual') {
     };
   }
 
+  const llmMode = clampLlmMode(opts.llmMode || 'auto');
   isFetching = true;
   try {
     const response = await runPipeline({
       triggerType,
       label: 'core',
-      qualityOptions: buildQualityOptionsForRun(),
+      qualityOptions: buildQualityOptionsForRun(llmMode),
+      llmMode,
       sourceTasks: [
         {
           source: 'greenhouse',
@@ -319,7 +479,7 @@ async function runFetcher(triggerType = 'manual') {
   }
 }
 
-async function runSerpFetcher(triggerType = 'scheduler_serpapi') {
+async function runSerpFetcher(triggerType = 'scheduler_serpapi', opts = {}) {
   if (isSerpFetching) {
     return {
       accepted: false,
@@ -328,6 +488,7 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi') {
     };
   }
 
+  const llmMode = clampLlmMode(opts.llmMode || 'auto');
   isSerpFetching = true;
   try {
     const serpBudget = SERP_QUERIES.length
@@ -343,7 +504,8 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi') {
     const response = await runPipeline({
       triggerType,
       label: 'serpapi',
-      qualityOptions: buildQualityOptionsForRun(),
+      qualityOptions: buildQualityOptionsForRun(llmMode),
+      llmMode,
       sourceTasks: [
         {
           source: 'serpapi',
@@ -414,7 +576,7 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi') {
   }
 }
 
-async function runBigTechFetcher(triggerType = 'scheduler_bigtech') {
+async function runBigTechFetcher(triggerType = 'scheduler_bigtech', opts = {}) {
   if (isBigTechFetching) {
     return {
       accepted: false,
@@ -423,12 +585,14 @@ async function runBigTechFetcher(triggerType = 'scheduler_bigtech') {
     };
   }
 
+  const llmMode = clampLlmMode(opts.llmMode || 'auto');
   isBigTechFetching = true;
   try {
     const response = await runPipeline({
       triggerType,
       label: 'bigtech',
-      qualityOptions: buildQualityOptionsForRun(),
+      qualityOptions: buildQualityOptionsForRun(llmMode),
+      llmMode,
       sourceTasks: [
         {
           source: 'greenhouse',
@@ -455,7 +619,7 @@ async function runBigTechFetcher(triggerType = 'scheduler_bigtech') {
   }
 }
 
-async function runInboxCleanup(triggerType = 'manual_cleanup') {
+async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
   if (isCleanupRunning) {
     return {
       accepted: false,
@@ -467,7 +631,8 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
   isCleanupRunning = true;
   const runId = await createRun(triggerType);
   const start = Date.now();
-  const qualityOptions = buildQualityOptionsForRun();
+  const llmMode = clampLlmMode(opts.llmMode || 'auto');
+  const qualityOptions = buildQualityOptionsForRun(llmMode);
   const summary = {
     runId,
     trigger: triggerType,
@@ -490,6 +655,7 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
       filteredOut: 0,
       llmUsed: 0,
     },
+    llm: initLlmProgress(),
     sources: {
       cleanup_inbox: {
         fetched: 0,
@@ -501,6 +667,7 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
     },
     errors: [],
   };
+  bootstrapRunProgress(runId, { trigger: triggerType, label: 'cleanup_inbox', summary });
 
   try {
     const rows = await dbAll(
@@ -511,8 +678,10 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
     );
     summary.totals.fetched = rows.length;
     summary.sources.cleanup_inbox.fetched = rows.length;
+    syncRunProgress(runId, summary, 'running');
 
-    for (const row of rows) {
+    const withMode = assignLlmModes(rows.map((r) => ({ ...r })), qualityOptions, llmMode);
+    for (const row of withMode) {
       try {
         const normalized = normalizeJob({
           company: row.company,
@@ -528,8 +697,15 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
         const fit = await evaluateJobFit({
           normalizedJob: normalized,
           profile,
-          qualityOptions,
+          qualityOptions: {
+            ...qualityOptions,
+            llm: {
+              ...(qualityOptions.llm || {}),
+              mode: row.__llm_mode || qualityOptions?.llm?.mode || 'auto',
+            },
+          },
           runId,
+          jobId: row.id,
         });
         const nextStatus = fit.admittedToInbox ? 'inbox' : 'filtered';
         const update = await dbRun(
@@ -555,11 +731,19 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
 
         if (!update.changes) {
           summary.totals.skipped += 1;
+          syncRunProgress(runId, summary, 'running');
           continue;
         }
 
         summary.totals.reevaluated += 1;
         if (fit.llmUsed) summary.quality.llmUsed += 1;
+        if (fit.llmEligible) {
+          summary.llm.eligible += 1;
+          if (fit.llmAttempted) summary.llm.attempted += 1;
+          if (fit.llmUsed) summary.llm.completed += 1;
+          else if (fit.llmQueued) summary.llm.batchQueued = (summary.llm.batchQueued || 0) + 1;
+          else summary.llm.skipped += 1;
+        }
 
         if (fit.admittedToInbox) {
           summary.totals.kept += 1;
@@ -585,17 +769,27 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
             llmUsed: !!fit.llmUsed,
           },
         });
+        syncRunProgress(runId, summary, 'running');
       } catch (err) {
         summary.totals.failed += 1;
         summary.sources.cleanup_inbox.failed += 1;
         summary.errors.push(`cleanup_inbox#${row.id}: ${err.message}`);
+        syncRunProgress(runId, summary, 'running');
       }
     }
 
     summary.finishedAt = new Date().toISOString();
     summary.durationMs = Date.now() - start;
+    const batchFlush = await flushBatchForRun({ runId, options: qualityOptions.llm || {} });
+    if (batchFlush?.batchId) {
+      summary.llm.batchSubmitted = batchFlush.submitted || 0;
+      summary.llm.batchId = batchFlush.batchId;
+    } else if (batchFlush?.error) {
+      summary.errors.push(`llm_batch: ${batchFlush.error}`);
+    }
     const status = summary.errors.length ? (summary.totals.reevaluated ? 'partial' : 'failed') : 'success';
     await finalizeRun(runId, status, summary, summary.errors.join(' | ') || null);
+    syncRunProgress(runId, summary, status);
 
     return {
       runId,
@@ -609,6 +803,7 @@ async function runInboxCleanup(triggerType = 'manual_cleanup') {
     summary.durationMs = Date.now() - start;
     summary.errors.push(err.message);
     await finalizeRun(runId, 'failed', summary, err.message);
+    syncRunProgress(runId, summary, 'failed');
     return {
       runId,
       status: 'failed',
@@ -627,6 +822,7 @@ const BIGTECH_FETCH_INTERVAL = BIGTECH_FETCH_INTERVAL_MIN * 60 * 1000;
 let scheduled = null;
 let scheduledBigTech = null;
 let scheduledSerpApi = null;
+let scheduledLlmBatchPoll = null;
 
 async function startScheduler() {
   if (RUN_ON_STARTUP) {
@@ -649,6 +845,14 @@ async function startScheduler() {
   scheduledBigTech = setInterval(() => {
     runBigTechFetcher('scheduler_bigtech').catch((err) => console.error('[BigTech] scheduled run failed:', err.message));
   }, BIGTECH_FETCH_INTERVAL);
+
+  if (LLM_BATCH_ENABLED) {
+    scheduledLlmBatchPoll = setInterval(() => {
+      pollAndReconcileBatches({
+        options: { llmAdmitThreshold: QUALITY_LLM_ADMIT_THRESHOLD },
+      }).catch((err) => console.error('[LLM Batch] poll failed:', err.message));
+    }, Math.max(10, LLM_BATCH_POLL_INTERVAL_SEC) * 1000);
+  }
 
   console.log(`[Scheduler] Next core fetch in ${FETCH_INTERVAL / 60000} minutes`);
   console.log(`[SerpAPI] Next serpapi fetch in ${SERPAPI_FETCH_INTERVAL / 60000} minutes`);
@@ -709,6 +913,10 @@ async function startScheduler() {
         llmEnabled: LLM_ENABLED,
         llmDailyCap: LLM_DAILY_CAP,
         llmMaxPerRun: LLM_MAX_PER_RUN,
+        llmBatchEnabled: LLM_BATCH_ENABLED,
+        llmBatchThreshold: LLM_BATCH_THRESHOLD,
+        llmBatchRealtimeFallbackCount: LLM_BATCH_REALTIME_FALLBACK_COUNT,
+        llmBatchPollIntervalSec: LLM_BATCH_POLL_INTERVAL_SEC,
       },
       missingConfig: missingSourceConfig(),
     });
@@ -747,19 +955,107 @@ async function startScheduler() {
     }
   });
 
+  app.get('/api/ingestion/runs/:id/progress', async (req, res) => {
+    const runId = parseInt(req.params.id || '0', 10);
+    if (!runId) return res.status(400).json({ error: 'invalid run id' });
+
+    const live = runProgress.get(runId);
+    if (live) return res.json(live);
+
+    try {
+      const row = await dbGet(
+        `SELECT id, started_at, finished_at, trigger_type, status, summary_json
+         FROM ingestion_runs
+         WHERE id = ?
+         LIMIT 1`,
+        [runId]
+      );
+      if (!row) return res.status(404).json({ error: 'run not found' });
+
+      let summary = {};
+      try {
+        summary = row.summary_json ? JSON.parse(row.summary_json) : {};
+      } catch {
+        summary = {};
+      }
+
+      const quality = summary.quality || {};
+      const llm = normalizeLlmProgress(
+        summary.llm || { completed: Number(quality.llmUsed) || 0 }
+      );
+
+      return res.json({
+        runId: row.id,
+        trigger: row.trigger_type,
+        label: summary.label || 'unknown',
+        status: row.status,
+        totals: summary.totals || {},
+        quality,
+        llm,
+        startedAt: row.started_at,
+        finishedAt: row.finished_at,
+        updatedAt: row.finished_at || row.started_at || new Date().toISOString(),
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/scheduler/run', async (req, res) => {
-    const result = await runFetcher('manual');
+    const llmMode = clampLlmMode(req.body?.llmMode || 'auto');
+    const result = await runFetcher('manual', { llmMode });
     res.json(result);
   });
 
   app.post('/api/scheduler/run-serpapi', async (req, res) => {
-    const result = await runSerpFetcher('manual_serpapi');
+    const llmMode = clampLlmMode(req.body?.llmMode || 'auto');
+    const result = await runSerpFetcher('manual_serpapi', { llmMode });
     res.json(result);
   });
 
   app.post('/api/scheduler/cleanup-inbox', async (req, res) => {
-    const result = await runInboxCleanup('manual_cleanup');
+    const llmMode = clampLlmMode(req.body?.llmMode || 'auto');
+    const result = await runInboxCleanup('manual_cleanup', { llmMode });
     res.json(result);
+  });
+
+  app.post('/api/llm/batch/requeue-failed', async (req, res) => {
+    try {
+      const batchQualityOptions = buildQualityOptionsForRun('batch');
+      const rows = await dbAll(
+        `SELECT id, company, title, location, post_date, source, url, jd_text, is_bigtech, last_run_id
+         FROM job_queue
+         WHERE llm_review_state = 'failed'
+         ORDER BY id DESC
+         LIMIT 500`
+      );
+      let queued = 0;
+      for (const row of rows) {
+        const fit = await evaluateJobFit({
+          normalizedJob: normalizeJob(row),
+          profile,
+          qualityOptions: {
+            ...batchQualityOptions,
+            llm: { ...(batchQualityOptions.llm || {}), mode: 'batch' },
+          },
+          runId: row.last_run_id || null,
+          jobId: row.id,
+        });
+        if (fit.llmQueued) {
+          await dbRun(
+            `UPDATE job_queue
+             SET llm_review_state = 'pending', llm_review_error = NULL, llm_pending_custom_id = ?,
+                 llm_review_updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [fit.llmPendingCustomId || null, row.id]
+          );
+          queued += 1;
+        }
+      }
+      res.json({ queued });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.use('/jobs', jobsRouter);
