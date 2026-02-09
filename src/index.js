@@ -16,9 +16,15 @@ app.use(express.json());
 const TARGET_BOARDS = (process.env.GREENHOUSE_BOARDS || DEFAULT_BOARDS.join(','))
   .split(',')
   .filter(Boolean);
-const SERP_QUERIES = (process.env.SERPAPI_QUERIES || '')
-  .split(',')
-  .map((q) => q.trim())
+
+const searchCfg = loadSearchConfig();
+const SERP_QUERIES = (buildQueriesFromConfig(searchCfg) || [])
+  .concat(
+    (process.env.SERPAPI_QUERIES || '')
+      .split(',')
+      .map((q) => q.trim())
+      .filter(Boolean)
+  )
   .filter(Boolean);
 
 const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
