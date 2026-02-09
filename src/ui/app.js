@@ -41,6 +41,7 @@ const el = {
   nextPage: document.getElementById('next-page'),
   runStatus: document.getElementById('run-status'),
   runSummary: document.getElementById('run-summary'),
+  runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
   llmProgress: document.getElementById('llm-progress'),
   llmProgressMeta: document.getElementById('llm-progress-meta'),
@@ -53,6 +54,7 @@ const el = {
   countApproved: document.getElementById('count-approved'),
   countApplied: document.getElementById('count-applied'),
   countArchive: document.getElementById('count-archive'),
+  countFiltered: document.getElementById('count-filtered'),
   undoToast: document.getElementById('undo-toast'),
   undoText: document.getElementById('undo-text'),
   undoCountdown: document.getElementById('undo-countdown'),
@@ -141,7 +143,7 @@ async function loadRuns() {
 async function loadStageCounts() {
   const countsId = ++state.countsSeq;
   try {
-    const stages = ['inbox', 'approved', 'applied', 'archive'];
+    const stages = ['inbox', 'approved', 'applied', 'archive', 'filtered'];
     const pairs = await Promise.all(
       stages.map(async (stage) => [stage, await fetchStageCount(buildFilterParams(stage))])
     );
@@ -327,7 +329,7 @@ el.list.addEventListener('click', (event) => {
   const id = button.dataset.id;
   const action = button.dataset.action;
   if (action === 'provenance') return loadProvenance(id);
-  if (action === 'approved' || action === 'applied' || action === 'skipped') {
+  if (action === 'approved' || action === 'applied' || action === 'skipped' || action === 'inbox') {
     return runChoice(id, action);
   }
 });

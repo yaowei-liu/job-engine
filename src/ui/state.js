@@ -3,6 +3,7 @@ export const STAGE_TO_STATUS = {
   approved: 'approved',
   applied: 'applied',
   archive: 'skipped',
+  filtered: 'filtered',
 };
 
 export const STAGE_COPY = {
@@ -10,6 +11,7 @@ export const STAGE_COPY = {
   approved: 'Viewing approved: focus this list when you are ready to apply.',
   applied: 'Viewing applied: completed applications.',
   archive: 'Viewing archive: skipped jobs are stored here and shown less frequently.',
+  filtered: 'Viewing filtered: rejected by quality gate or LLM. Use this for calibration.',
 };
 
 export function createState() {
@@ -25,6 +27,7 @@ export function createState() {
       approved: 0,
       applied: 0,
       archive: 0,
+      filtered: 0,
     },
     pendingUndo: null,
     undoTimer: null,

@@ -305,6 +305,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       fetched: 0,
       inserted: 0,
       deduped: 0,
+      resurfaced: 0,
       failed: 0,
       skipped: 0,
     },
@@ -334,6 +335,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
         fetched: r.jobs.length,
         inserted: 0,
         deduped: 0,
+        resurfaced: 0,
         failed: 0,
         error: r.error,
         ...(r.meta ? { meta: r.meta } : {}),
@@ -350,7 +352,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
     for (const job of jobs) {
       const source = (job.source || 'unknown').toLowerCase();
       if (!summary.sources[source]) {
-        summary.sources[source] = { fetched: 0, inserted: 0, deduped: 0, failed: 0, error: null };
+        summary.sources[source] = { fetched: 0, inserted: 0, deduped: 0, resurfaced: 0, failed: 0, error: null };
       }
 
       try {
@@ -385,6 +387,10 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
         if (result.deduped) {
           summary.totals.deduped += 1;
           summary.sources[source].deduped += 1;
+          if (result.resurfaced) {
+            summary.totals.resurfaced += 1;
+            summary.sources[source].resurfaced += 1;
+          }
         } else {
           summary.totals.inserted += 1;
           summary.sources[source].inserted += 1;

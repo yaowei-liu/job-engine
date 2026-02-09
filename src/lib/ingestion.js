@@ -274,9 +274,9 @@ async function ingestJob(job, runId) {
 
   const admissionStatus = (finalFit.admittedToInbox || finalFit.llmQueued) ? 'inbox' : 'filtered';
 
-  async function findExistingJobId() {
+  async function findExistingJob() {
     const existing = await dbGet(
-      `SELECT id
+      `SELECT id, status
        FROM job_queue
        WHERE canonical_fingerprint = ?
           OR (company_key = ? AND title_key = ? AND location_key = ? AND post_date_key = ?)
@@ -293,7 +293,7 @@ async function ingestJob(job, runId) {
         normalized.url,
       ]
     );
-    return existing?.id || null;
+    return existing || null;
   }
 
   async function updateExistingJob(existingJobId) {
@@ -346,8 +346,11 @@ async function ingestJob(job, runId) {
     );
   }
 
-  let jobId = await findExistingJobId();
+  const existingJob = await findExistingJob();
+  let jobId = existingJob?.id || null;
+  let previousStatus = existingJob?.status || null;
   let deduped = !!jobId;
+  let resurfaced = false;
 
   if (deduped) {
     await updateExistingJob(jobId);
@@ -400,11 +403,17 @@ async function ingestJob(job, runId) {
       jobId = inserted.lastID;
     } catch (err) {
       if (!isUniqueConstraintError(err)) throw err;
-      jobId = await findExistingJobId();
+      const existingAfterConflict = await findExistingJob();
+      jobId = existingAfterConflict?.id || null;
+      previousStatus = existingAfterConflict?.status || previousStatus;
       if (!jobId) throw err;
       deduped = true;
       await updateExistingJob(jobId);
     }
+  }
+
+  if (deduped && previousStatus === 'filtered' && admissionStatus === 'inbox') {
+    resurfaced = true;
   }
 
   if (finalFit.llmNeedsQueueAfterUpsert && jobId) {
@@ -476,10 +485,24 @@ async function ingestJob(job, runId) {
       llmQueued: finalFit.llmQueued || false,
     },
   });
+  if (resurfaced) {
+    await addJobEvent({
+      jobId,
+      runId,
+      eventType: 'resurfaced',
+      message: 'Previously filtered listing resurfaced to inbox after fresh ingest',
+      payload: {
+        previousStatus,
+        nextStatus: admissionStatus,
+        qualityBucket: finalFit.qualityBucket,
+      },
+    });
+  }
 
   return {
     id: jobId,
     deduped,
+    resurfaced,
     score,
     tier,
     hits,

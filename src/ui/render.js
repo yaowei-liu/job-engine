@@ -9,11 +9,30 @@ export function renderStageButtons({ state, el, stageCopy }) {
   el.countApproved.textContent = state.stageCounts.approved;
   el.countApplied.textContent = state.stageCounts.applied;
   el.countArchive.textContent = state.stageCounts.archive;
+  el.countFiltered.textContent = state.stageCounts.filtered;
 }
 
 function parseHits(value) {
   try {
     return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseReasonCodes(value) {
+  try {
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseMissingSkills(value) {
+  try {
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -37,6 +56,11 @@ function actionsForStage(stage, jobId) {
       <button data-action="approved" data-id="${jobId}" class="px-3 py-1.5 rounded-md bg-sky-100 text-sky-800 text-sm font-medium">Move to Approved</button>
     `;
   }
+  if (stage === 'filtered') {
+    return `
+      <button data-action="inbox" data-id="${jobId}" class="px-3 py-1.5 rounded-md bg-amber-100 text-amber-800 text-sm font-medium">Move to Inbox</button>
+    `;
+  }
   return '';
 }
 
@@ -49,6 +73,7 @@ export function renderList({ state, el }) {
     approved: 'bg-sky-100 text-sky-700',
     applied: 'bg-emerald-100 text-emerald-700',
     skipped: 'bg-slate-100 text-slate-500',
+    filtered: 'bg-rose-100 text-rose-700',
   };
 
   state.jobs.forEach((job, index) => {
@@ -59,6 +84,8 @@ export function renderList({ state, el }) {
     card.style.animationDelay = `${Math.min(index * 25, 180)}ms`;
 
     const hits = parseHits(job.hits);
+    const reasonCodes = parseReasonCodes(job.fit_reason_codes);
+    const missingSkills = parseMissingSkills(job.llm_missing_must_have);
     const actions = actionsForStage(state.stage, job.id);
     const fitBadge = (() => {
       if (job.fit_label === 'high') return 'bg-emerald-100 text-emerald-700';
@@ -87,6 +114,17 @@ export function renderList({ state, el }) {
             <span>Last seen: ${job.last_seen_at || '-'}</span>
             <span>Dedup: ${job.dedup_reason || '-'}</span>
           </div>
+          ${(state.stage === 'filtered' || job.status === 'filtered') ? `
+            <div class="mt-2 rounded-lg border border-rose-200 bg-rose-50/80 p-2">
+              <p class="text-xs font-semibold text-rose-700">Why filtered</p>
+              <p class="mt-1 text-xs text-rose-800">
+                Source: ${job.fit_source || 'rules'} · Bucket: ${job.quality_bucket || 'filtered'} · Fit: ${job.fit_label || 'low'} (${job.fit_score || 0})
+              </p>
+              ${reasonCodes.length ? `<p class="mt-1 text-xs text-rose-800">Reasons: ${reasonCodes.slice(0, 6).join(' | ')}</p>` : '<p class="mt-1 text-xs text-rose-700">No reason codes recorded.</p>'}
+              ${missingSkills.length ? `<p class="mt-1 text-xs text-rose-800">Missing must-have: ${missingSkills.slice(0, 6).join(', ')}</p>` : ''}
+              ${job.llm_review_error ? `<p class="mt-1 text-xs text-rose-700">LLM note: ${job.llm_review_error}</p>` : ''}
+            </div>
+          ` : ''}
           ${hits.length ? `<p class="mt-1 text-xs text-slate-400">Hits: ${hits.join(' | ')}</p>` : ''}
           ${job.url ? `<a href="${job.url}" target="_blank" class="inline-block mt-2 text-sm text-sky-700 hover:text-sky-900">Open posting</a>` : ''}
         </div>
@@ -133,9 +171,17 @@ export function renderRunSummary({ run, el }) {
   el.runStatus.textContent = run.status;
   el.runStatus.className = `text-xs px-2 py-1 rounded-full ${run.status === 'success' ? 'bg-emerald-100 text-emerald-700' : run.status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`;
   const totals = run.summary?.totals || {};
+  const quality = run.summary?.quality || {};
   const llm = run.summary?.llm || {};
+  const resurfaced = totals.resurfaced || 0;
   const queuedText = llm.batchQueued ? `, batch queued ${llm.batchQueued}` : '';
-  el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, failed ${totals.failed || 0}${queuedText}.`;
+  el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, resurfaced ${resurfaced}, failed ${totals.failed || 0}${queuedText}.`;
+  const hard = quality.hardExclusionCount || 0;
+  const loc = quality.locationMismatchCount || 0;
+  const llmEligible = quality.borderlineSentToLlmCount || 0;
+  if (el.runQualityHints) {
+    el.runQualityHints.textContent = `Quality: hard exclusions ${hard}, location mismatches ${loc}, borderline sent to LLM ${llmEligible}.`;
+  }
   el.runErrors.textContent = run.errorText || '';
   renderLlmProgress({
     progress: {
