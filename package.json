@@ -5,7 +5,8 @@
   "description": "Personal job search engine",
   "scripts": {
     "dev": "node src/index.js",
-    "lint": "echo 'lint placeholder'"
+    "lint": "echo 'lint placeholder'",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.19.2",

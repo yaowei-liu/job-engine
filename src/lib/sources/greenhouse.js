@@ -79,4 +79,4 @@ async function fetchAll(boardUrls = DEFAULT_BOARDS) {
   return results.flat();
 }
 
-module.exports = { fetchJobs, fetchAll, DEFAULT_BOARDS };
+module.exports = { fetchJobs, fetchAll, DEFAULT_BOARDS, extractBoardToken };

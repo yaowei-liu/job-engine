@@ -92,4 +92,4 @@ async function fetchAll(queries = [], location) {
   return results.flat();
 }
 
-module.exports = { fetchJobs, fetchAll };
+module.exports = { fetchJobs, fetchAll, normalizePostedAt };
