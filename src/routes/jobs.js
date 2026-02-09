@@ -53,17 +53,17 @@ router.get('/', (req, res) => {
   });
 });
 
-// Approve/skip
+// Approve/skip/applied
 router.post('/:id/status', (req, res) => {
   const { id } = req.params;
   const { status } = req.body || {};
-  if (!['approved', 'skipped'].includes(status)) return res.status(400).json({ error: 'invalid status' });
+  if (!['approved', 'skipped', 'applied'].includes(status)) return res.status(400).json({ error: 'invalid status' });
 
   db.run('UPDATE job_queue SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
 
-    if (status === 'approved') {
-      // Fire-and-forget sync to personal dashboard
+    if (status === 'applied') {
+      // Sync to personal dashboard only when marked applied
       syncToPersonalDashboard(id).catch(() => {});
     }
 
