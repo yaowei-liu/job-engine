@@ -78,6 +78,8 @@ export function renderList({ state, el }) {
             <span>Tier: ${job.tier}</span>
             <span>Source: ${job.source || 'unknown'}</span>
             ${job.fit_label ? `<span class="px-2 py-0.5 rounded-full ${fitBadge}">Fit: ${job.fit_label} (${job.fit_score || 0})</span>` : ''}
+            ${job.llm_review_state === 'pending' ? '<span class="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">LLM pending</span>' : ''}
+            ${job.llm_review_state === 'failed' ? '<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">LLM failed</span>' : ''}
             ${job.years_req ? `<span>${job.years_req}</span>` : ''}
           </div>
           <div class="mt-1 text-xs text-slate-500 flex flex-wrap gap-2">
@@ -131,6 +133,39 @@ export function renderRunSummary({ run, el }) {
   el.runStatus.textContent = run.status;
   el.runStatus.className = `text-xs px-2 py-1 rounded-full ${run.status === 'success' ? 'bg-emerald-100 text-emerald-700' : run.status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`;
   const totals = run.summary?.totals || {};
-  el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, failed ${totals.failed || 0}.`;
+  const llm = run.summary?.llm || {};
+  const queuedText = llm.batchQueued ? `, batch queued ${llm.batchQueued}` : '';
+  el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, failed ${totals.failed || 0}${queuedText}.`;
   el.runErrors.textContent = run.errorText || '';
+  renderLlmProgress({
+    progress: {
+      status: run.status,
+      llm: run.summary?.llm || { completed: run.summary?.quality?.llmUsed || 0 },
+    },
+    el,
+  });
+}
+
+export function renderLlmProgress({ progress, el }) {
+  const llm = progress?.llm || {};
+  const eligible = Number(llm.eligible) || 0;
+  const completed = Number(llm.completed) || 0;
+  const skipped = Number(llm.skipped) || 0;
+  const inFlight = Number(llm.inFlight) || 0;
+  const resolved = completed + skipped;
+  const percent = eligible > 0 ? Math.min(100, Math.round((resolved / eligible) * 100)) : 0;
+  const status = progress?.status || 'idle';
+
+  el.llmProgressMeta.textContent = `${percent}%`;
+  el.llmProgressBar.style.width = `${percent}%`;
+
+  if (status === 'running') {
+    el.llmProgressDetail.textContent = `Completed ${completed}/${eligible} eligible, skipped ${skipped}, in-flight ${inFlight}.`;
+    return;
+  }
+  if (!eligible && !completed && !skipped) {
+    el.llmProgressDetail.textContent = 'No LLM-eligible jobs in this run.';
+    return;
+  }
+  el.llmProgressDetail.textContent = `Run done: completed ${completed}/${eligible} eligible, skipped ${skipped}.`;
 }

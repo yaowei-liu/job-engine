@@ -73,7 +73,13 @@
     "daily_cap": 120,
     "max_per_run": 30,
     "timeout_ms": 15000,
-    "model": "gpt-4o-mini"
+    "model": "gpt-4o-mini",
+    "batch_enabled": true,
+    "batch_threshold": 20,
+    "batch_realtime_fallback_count": 5,
+    "batch_model": "gpt-4o-mini",
+    "batch_poll_interval_sec": 30,
+    "batch_completion_window": "24h"
   },
   "bigtech": {
     "greenhouse_boards": [],

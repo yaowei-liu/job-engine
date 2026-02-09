@@ -2,6 +2,7 @@ import {
   fetchJobs,
   fetchLatestRun,
   fetchProvenance,
+  fetchRunProgress,
   fetchStageCount,
   triggerInboxCleanupRun,
   triggerIngestionRun,
@@ -10,6 +11,7 @@ import {
 import { createState, STAGE_COPY, STAGE_TO_STATUS } from './state.js';
 import {
   renderList,
+  renderLlmProgress,
   renderRunSummary,
   renderStageButtons,
   syncListAfterRemoval,
@@ -40,6 +42,10 @@ const el = {
   runStatus: document.getElementById('run-status'),
   runSummary: document.getElementById('run-summary'),
   runErrors: document.getElementById('run-errors'),
+  llmProgress: document.getElementById('llm-progress'),
+  llmProgressMeta: document.getElementById('llm-progress-meta'),
+  llmProgressBar: document.getElementById('llm-progress-bar'),
+  llmProgressDetail: document.getElementById('llm-progress-detail'),
   provenance: document.getElementById('provenance'),
   provenanceContent: document.getElementById('provenance-content'),
   stageButtons: Array.from(document.querySelectorAll('.stage-btn')),
@@ -54,6 +60,7 @@ const el = {
   refresh: document.getElementById('refresh'),
   runScan: document.getElementById('run-scan'),
   cleanupInbox: document.getElementById('cleanup-inbox'),
+  llmMode: document.getElementById('llm-mode'),
   closeProvenance: document.getElementById('close-provenance'),
 };
 
@@ -250,6 +257,61 @@ function setStage(stage) {
   load();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
+  const timeoutMs = 12 * 60 * 1000;
+  const startedAt = Date.now();
+  let requestDone = false;
+  let activeRunId = null;
+  requestPromise.finally(() => {
+    requestDone = true;
+  });
+
+  renderLlmProgress({
+    progress: {
+      status: 'running',
+      llm: { eligible: 0, completed: 0, skipped: 0, inFlight: 0 },
+    },
+    el,
+  });
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      if (!activeRunId) {
+        const latest = await fetchLatestRun();
+        if (latest?.trigger === expectedTrigger) {
+          activeRunId = latest.id;
+        }
+      }
+
+      if (activeRunId) {
+        const progress = await fetchRunProgress(activeRunId);
+        renderLlmProgress({ progress, el });
+
+        if (['success', 'partial', 'failed'].includes(progress.status)) return;
+      }
+    } catch {
+      // keep polling while run is active
+    }
+
+    if (requestDone && !activeRunId) return;
+    if (requestDone && activeRunId) {
+      await sleep(700);
+      try {
+        const finalProgress = await fetchRunProgress(activeRunId);
+        renderLlmProgress({ progress: finalProgress, el });
+      } catch {
+        // no-op, render will refresh from latest run after load
+      }
+      return;
+    }
+    await sleep(1400);
+  }
+}
+
 el.stageButtons.forEach((button) => {
   button.addEventListener('click', () => setStage(button.dataset.stage));
 });
@@ -294,11 +356,17 @@ el.runScan.addEventListener('click', async () => {
   el.runScan.disabled = true;
   el.runScan.textContent = 'Running...';
   clearError();
+  const requestPromise = triggerIngestionRun(el.llmMode?.value || 'auto');
+  const monitorPromise = monitorRunWhilePending({
+    requestPromise,
+    expectedTrigger: 'manual',
+  });
   try {
-    const data = await triggerIngestionRun();
+    const data = await requestPromise;
     if (!data.accepted) {
       showError(data.message || 'Run already active');
     }
+    await Promise.race([monitorPromise, sleep(2500)]);
     await load();
   } catch (err) {
     showError(err.message || 'Failed to run ingestion');
@@ -313,11 +381,17 @@ el.cleanupInbox.addEventListener('click', async () => {
   el.cleanupInbox.disabled = true;
   el.cleanupInbox.textContent = 'Cleaning...';
   clearError();
+  const requestPromise = triggerInboxCleanupRun(el.llmMode?.value || 'auto');
+  const monitorPromise = monitorRunWhilePending({
+    requestPromise,
+    expectedTrigger: 'manual_cleanup',
+  });
   try {
-    const data = await triggerInboxCleanupRun();
+    const data = await requestPromise;
     if (!data.accepted) {
       showError(data.message || 'Cleanup already active');
     }
+    await Promise.race([monitorPromise, sleep(2500)]);
     await load();
   } catch (err) {
     showError(err.message || 'Failed to cleanup inbox');

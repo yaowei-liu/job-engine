@@ -52,4 +52,77 @@ test('evaluateJobFit returns filtered for hard exclusion without using llm', asy
   assert.equal(fit.qualityBucket, 'filtered');
   assert.equal(fit.fitLabel, 'low');
   assert.equal(fit.llmUsed, false);
+  assert.equal(fit.llmEligible, false);
+  assert.equal(fit.llmAttempted, false);
+  assert.equal(fit.llmSkippedReason, null);
+});
+
+test('evaluateJobFit marks llm as eligible and skipped when borderline with llm disabled', async () => {
+  const fit = await evaluateJobFit({
+    normalizedJob: {
+      title: 'Software Engineer',
+      location: 'Canada',
+      jd_text: 'Software engineer role building APIs with Node and React',
+    },
+    profile: {
+      target_roles: ['software engineer'],
+      must_have_skills: [],
+      nice_to_have_skills: ['react'],
+      location_preferences: ['toronto', 'canada', 'remote'],
+      hard_exclusions: ['senior', 'staff', 'principal'],
+    },
+    qualityOptions: {
+      minInboxScore: 70,
+      borderlineMin: 30,
+      borderlineMax: 69,
+      llm: { enabled: 'false' },
+    },
+  });
+
+  assert.equal(fit.llmEligible, true);
+  assert.equal(fit.llmAttempted, true);
+  assert.equal(typeof fit.llmSkippedReason, 'string');
+  assert.equal(fit.llmUsed, false);
+});
+
+test('evaluateJobFit batch mode without API key falls back without pending queue', async () => {
+  const originalOpenAI = process.env.OPENAI_API_KEY;
+  const originalLLM = process.env.LLM_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.LLM_API_KEY;
+
+  try {
+    const fit = await evaluateJobFit({
+      normalizedJob: {
+        title: 'Software Engineer',
+        location: 'Canada',
+        jd_text: 'Software engineer role building APIs with Node and React',
+      },
+      profile: {
+        target_roles: ['software engineer'],
+        must_have_skills: [],
+        nice_to_have_skills: ['react'],
+        location_preferences: ['toronto', 'canada', 'remote'],
+        hard_exclusions: ['senior', 'staff', 'principal'],
+      },
+      qualityOptions: {
+        minInboxScore: 70,
+        borderlineMin: 30,
+        borderlineMax: 69,
+        llm: { enabled: 'true', mode: 'batch' },
+      },
+      runId: 1,
+      jobId: 123,
+    });
+
+    assert.equal(fit.llmEligible, true);
+    assert.equal(fit.llmAttempted, true);
+    assert.equal(fit.llmQueued, false);
+    assert.equal(typeof fit.llmSkippedReason, 'string');
+  } finally {
+    if (typeof originalOpenAI === 'string') process.env.OPENAI_API_KEY = originalOpenAI;
+    else delete process.env.OPENAI_API_KEY;
+    if (typeof originalLLM === 'string') process.env.LLM_API_KEY = originalLLM;
+    else delete process.env.LLM_API_KEY;
+  }
 });

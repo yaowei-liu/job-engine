@@ -15,6 +15,14 @@
         <p class="text-sm text-slate-600">Workflow mode: clear Inbox first, then process Approved to Applied. Shortcuts: J/K move, A approve, S skip, L applied.</p>
       </div>
       <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-600 inline-flex items-center gap-1">
+          LLM mode
+          <select id="llm-mode" class="px-2 py-1 rounded-md border border-slate-200 text-xs bg-white">
+            <option value="auto" selected>Auto</option>
+            <option value="realtime">Force realtime</option>
+            <option value="batch">Force batch</option>
+          </select>
+        </label>
         <button id="run-scan" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Run Ingestion</button>
         <button id="cleanup-inbox" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium">Cleanup Inbox</button>
         <button id="refresh" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium">Refresh</button>
@@ -28,6 +36,16 @@
           <span id="run-status" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">No data</span>
         </div>
         <p id="run-summary" class="text-sm text-slate-600 mt-2">Waiting for run data...</p>
+        <div id="llm-progress" class="mt-3">
+          <div class="flex items-center justify-between text-xs text-slate-600">
+            <span class="font-medium">LLM processing</span>
+            <span id="llm-progress-meta">0%</span>
+          </div>
+          <div class="mt-1 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+            <div id="llm-progress-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <p id="llm-progress-detail" class="mt-1 text-xs text-slate-500">No active run.</p>
+        </div>
         <p id="run-errors" class="text-xs text-rose-600 mt-1"></p>
       </div>
       <div class="bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm">
