@@ -6,16 +6,80 @@
   <title>Job Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: "Avenir Next", "Segoe UI", sans-serif; background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%); }
-    .job-selected { outline: 2px solid #0284c7; }
+    :root {
+      --bg-1: #f7fafc;
+      --bg-2: #e8eef9;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --card-border: #dce4ef;
+    }
+    body {
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(20, 184, 166, 0.11), transparent 34%),
+        radial-gradient(circle at 88% 10%, rgba(59, 130, 246, 0.11), transparent 28%),
+        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    }
+    .job-selected { outline: 2px solid #0f766e; }
+    .stage-chip-active { background: #0f766e; color: #ffffff; border-color: #0f766e; }
+    .job-card {
+      border: 1px solid var(--card-border);
+      transition: transform .22s ease, opacity .22s ease, box-shadow .22s ease, border-color .22s ease;
+      animation: cardIn .26s ease both;
+    }
+    .job-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08); }
+    .choice-approved {
+      transform: translateX(24px) scale(0.98);
+      opacity: 0;
+      border-color: #0f766e;
+      box-shadow: 0 12px 24px rgba(15, 118, 110, 0.2);
+    }
+    .choice-skipped {
+      transform: translateX(-24px) scale(0.98);
+      opacity: 0;
+      border-color: #64748b;
+      box-shadow: 0 12px 24px rgba(100, 116, 139, 0.2);
+    }
+    .choice-applied {
+      transform: translateY(-16px) scale(0.98);
+      opacity: 0;
+      border-color: #047857;
+      box-shadow: 0 12px 24px rgba(4, 120, 87, 0.2);
+    }
+    .pulse-notice { animation: pulseNotice .45s ease; }
+    .undo-toast {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 40;
+      min-width: 260px;
+      max-width: 360px;
+      transform: translateY(16px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform .2s ease, opacity .2s ease;
+    }
+    .undo-toast-visible {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulseNotice {
+      0% { transform: scale(0.98); opacity: 0.6; }
+      100% { transform: scale(1); opacity: 1; }
+    }
   </style>
 </head>
 <body class="text-slate-900 min-h-screen p-4 md:p-6">
   <div class="max-w-7xl mx-auto">
-    <header class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <header class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div>
         <h1 class="text-3xl font-semibold tracking-tight">Job Engine</h1>
-        <p class="text-sm text-slate-600">Reliable ingestion, fast decisions. Shortcuts: J/K move, A approve, S skip, L applied.</p>
+        <p class="text-sm text-slate-600">Workflow mode: clear Inbox first, then process Approved to Applied. Shortcuts: J/K move, A approve, S skip, L applied.</p>
       </div>
       <div class="flex items-center gap-2">
         <button id="run-scan" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Run Ingestion</button>
@@ -24,7 +88,7 @@
     </header>
 
     <section class="mb-5 grid gap-3 md:grid-cols-3">
-      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm md:col-span-2">
+      <div class="bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm md:col-span-2">
         <div class="flex items-center justify-between">
           <h2 class="font-semibold">Latest Ingestion Run</h2>
           <span id="run-status" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">No data</span>
@@ -32,15 +96,30 @@
         <p id="run-summary" class="text-sm text-slate-600 mt-2">Waiting for run data...</p>
         <p id="run-errors" class="text-xs text-rose-600 mt-1"></p>
       </div>
-      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-        <h2 class="font-semibold">List Stats</h2>
+      <div class="bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm">
+        <h2 class="font-semibold">Queue Stats</h2>
         <p id="stats" class="text-sm text-slate-600 mt-2">0 jobs</p>
         <p id="page-stats" class="text-xs text-slate-500 mt-1">Page 1</p>
+        <p id="stage-summary" class="text-xs text-teal-700 mt-1">Viewing inbox</p>
       </div>
     </section>
 
-    <section class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
-      <div class="grid gap-3 md:grid-cols-8">
+    <section class="bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <button data-stage="inbox" class="stage-btn stage-chip-active px-3 py-1.5 rounded-full border border-slate-200 text-sm font-medium">
+          Inbox <span id="count-inbox" class="ml-1 text-xs opacity-90">0</span>
+        </button>
+        <button data-stage="approved" class="stage-btn px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium">
+          Approved <span id="count-approved" class="ml-1 text-xs opacity-75">0</span>
+        </button>
+        <button data-stage="applied" class="stage-btn px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium">
+          Applied <span id="count-applied" class="ml-1 text-xs opacity-75">0</span>
+        </button>
+        <button data-stage="archive" class="stage-btn px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-500 text-sm font-medium">
+          Archive (Skipped) <span id="count-archive" class="ml-1 text-xs opacity-75">0</span>
+        </button>
+      </div>
+      <div class="grid gap-3 md:grid-cols-7 mt-3">
         <input id="q" placeholder="Search company or title" class="md:col-span-2 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
         <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
           <option value="">All tiers</option>
@@ -48,19 +127,14 @@
           <option value="B">Tier B</option>
           <option value="C">Tier C</option>
         </select>
-        <select id="status" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
-          <option value="">All statuses</option>
-          <option value="inbox">Inbox</option>
-          <option value="approved">Approved</option>
-          <option value="applied">Applied</option>
-          <option value="skipped">Skipped</option>
-        </select>
         <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
           <option value="">All sources</option>
           <option value="greenhouse">Greenhouse</option>
           <option value="lever">Lever</option>
           <option value="serpapi">SerpAPI</option>
           <option value="amazon">Amazon</option>
+          <option value="ashby">Ashby</option>
+          <option value="workday">Workday</option>
         </select>
         <select id="sort" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
           <option value="newest">Newest</option>
@@ -88,17 +162,17 @@
 
     <div id="error-banner" class="hidden mb-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-4 py-2 text-sm"></div>
     <div id="loading" class="hidden mb-4 text-sm text-slate-600">Loading jobs...</div>
-    <div id="empty" class="hidden mb-4 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">No jobs match current filters.</div>
+    <div id="empty" class="hidden mb-4 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">No jobs match current stage and filters.</div>
 
     <div id="list" class="space-y-3"></div>
 
-    <div class="mt-5 flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+    <div class="mt-5 flex items-center justify-between bg-white/95 border border-slate-200 rounded-xl p-3 shadow-sm">
       <button id="prev-page" class="px-3 py-1.5 rounded-md border border-slate-300 text-sm disabled:opacity-40">Previous</button>
       <span id="pagination" class="text-sm text-slate-600">Page 1</span>
       <button id="next-page" class="px-3 py-1.5 rounded-md border border-slate-300 text-sm disabled:opacity-40">Next</button>
     </div>
 
-    <section id="provenance" class="mt-6 hidden bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <section id="provenance" class="mt-6 hidden bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold">Selected Job Provenance</h2>
         <button id="close-provenance" class="text-sm text-slate-500 hover:text-slate-700">Close</button>
@@ -107,19 +181,50 @@
     </section>
   </div>
 
+  <div id="undo-toast" class="undo-toast bg-slate-900 text-white rounded-xl shadow-xl p-3">
+    <p id="undo-text" class="text-sm">Action completed</p>
+    <div class="mt-2 flex items-center justify-between">
+      <span id="undo-countdown" class="text-xs text-slate-300">Undo available for 8s</span>
+      <button id="undo-btn" class="px-2.5 py-1 rounded-md bg-white text-slate-900 text-xs font-semibold">Undo</button>
+    </div>
+  </div>
+
   <script>
+    const STAGE_TO_STATUS = {
+      inbox: 'inbox',
+      approved: 'approved',
+      applied: 'applied',
+      archive: 'skipped',
+    };
+
+    const STAGE_COPY = {
+      inbox: 'Viewing inbox: triage each item with approve or skip.',
+      approved: 'Viewing approved: focus this list when you are ready to apply.',
+      applied: 'Viewing applied: completed applications.',
+      archive: 'Viewing archive: skipped jobs are stored here and shown less frequently.',
+    };
+
     const state = {
       page: 1,
       pageSize: 20,
       jobs: [],
       total: 0,
       selectedIndex: 0,
+      stage: 'inbox',
+      stageCounts: {
+        inbox: 0,
+        approved: 0,
+        applied: 0,
+        archive: 0,
+      },
+      pendingUndo: null,
+      undoTimer: null,
+      undoCountdownTimer: null,
     };
 
     const el = {
       list: document.getElementById('list'),
       tier: document.getElementById('tier'),
-      status: document.getElementById('status'),
       source: document.getElementById('source'),
       sort: document.getElementById('sort'),
       bigtech: document.getElementById('bigtech'),
@@ -129,6 +234,7 @@
       minScore: document.getElementById('minScore'),
       stats: document.getElementById('stats'),
       pageStats: document.getElementById('page-stats'),
+      stageSummary: document.getElementById('stage-summary'),
       errorBanner: document.getElementById('error-banner'),
       loading: document.getElementById('loading'),
       empty: document.getElementById('empty'),
@@ -140,6 +246,15 @@
       runErrors: document.getElementById('run-errors'),
       provenance: document.getElementById('provenance'),
       provenanceContent: document.getElementById('provenance-content'),
+      stageButtons: Array.from(document.querySelectorAll('.stage-btn')),
+      countInbox: document.getElementById('count-inbox'),
+      countApproved: document.getElementById('count-approved'),
+      countApplied: document.getElementById('count-applied'),
+      countArchive: document.getElementById('count-archive'),
+      undoToast: document.getElementById('undo-toast'),
+      undoText: document.getElementById('undo-text'),
+      undoCountdown: document.getElementById('undo-countdown'),
+      undoBtn: document.getElementById('undo-btn'),
     };
 
     function showError(message) {
@@ -152,10 +267,59 @@
       el.errorBanner.textContent = '';
     }
 
+    function clearUndoTimers() {
+      if (state.undoTimer) {
+        clearTimeout(state.undoTimer);
+        state.undoTimer = null;
+      }
+      if (state.undoCountdownTimer) {
+        clearInterval(state.undoCountdownTimer);
+        state.undoCountdownTimer = null;
+      }
+    }
+
+    function hideUndoToast() {
+      clearUndoTimers();
+      el.undoToast.classList.remove('undo-toast-visible');
+      state.pendingUndo = null;
+    }
+
+    function showUndoToast(payload) {
+      clearUndoTimers();
+      state.pendingUndo = payload;
+      el.undoText.textContent = payload.message;
+      let remaining = 8;
+      el.undoCountdown.textContent = `Undo available for ${remaining}s`;
+      el.undoToast.classList.add('undo-toast-visible');
+
+      state.undoCountdownTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) return;
+        el.undoCountdown.textContent = `Undo available for ${remaining}s`;
+      }, 1000);
+
+      state.undoTimer = setTimeout(() => {
+        hideUndoToast();
+      }, 8000);
+    }
+
+    function renderStageButtons() {
+      for (const button of el.stageButtons) {
+        const isActive = button.dataset.stage === state.stage;
+        button.classList.toggle('stage-chip-active', isActive);
+        button.classList.toggle('bg-white', !isActive);
+      }
+      el.stageSummary.textContent = STAGE_COPY[state.stage];
+      el.countInbox.textContent = state.stageCounts.inbox;
+      el.countApproved.textContent = state.stageCounts.approved;
+      el.countApplied.textContent = state.stageCounts.applied;
+      el.countArchive.textContent = state.stageCounts.archive;
+    }
+
     function applyQueryStateToUrl() {
       const params = new URLSearchParams();
+      params.set('stage', state.stage);
       if (el.tier.value) params.set('tier', el.tier.value);
-      if (el.status.value) params.set('status', el.status.value);
       if (el.source.value) params.set('source', el.source.value);
       if (el.sort.value) params.set('sort', el.sort.value);
       if (el.q.value) params.set('q', el.q.value);
@@ -169,8 +333,18 @@
 
     function restoreQueryStateFromUrl() {
       const params = new URLSearchParams(window.location.search);
+      const stageParam = params.get('stage');
+      const legacyStatus = params.get('status');
+      if (stageParam && STAGE_TO_STATUS[stageParam]) {
+        state.stage = stageParam;
+      } else if (legacyStatus === 'skipped') {
+        state.stage = 'archive';
+      } else if (legacyStatus && STAGE_TO_STATUS[legacyStatus]) {
+        state.stage = legacyStatus;
+      } else {
+        state.stage = 'inbox';
+      }
       el.tier.value = params.get('tier') || '';
-      el.status.value = params.get('status') || '';
       el.source.value = params.get('source') || '';
       el.sort.value = params.get('sort') || 'newest';
       el.q.value = params.get('q') || '';
@@ -179,6 +353,22 @@
       el.bigtech.checked = params.get('bigtech') === 'true';
       el.hasErrors.checked = params.get('hasErrors') === 'true';
       state.page = Math.max(parseInt(params.get('page') || '1', 10), 1);
+      renderStageButtons();
+    }
+
+    function buildFilterParams(stage = state.stage) {
+      const params = new URLSearchParams();
+      const status = STAGE_TO_STATUS[stage];
+      if (status) params.set('status', status);
+      if (el.tier.value) params.set('tier', el.tier.value);
+      if (el.source.value) params.set('source', el.source.value);
+      if (el.sort.value) params.set('sort', el.sort.value);
+      if (el.q.value) params.set('q', el.q.value);
+      if (el.minScore.value) params.set('minScore', el.minScore.value);
+      if (el.seenWithinDays.value) params.set('seenWithinDays', el.seenWithinDays.value);
+      if (el.bigtech.checked) params.set('bigtech', 'true');
+      if (el.hasErrors.checked) params.set('hasErrors', 'true');
+      return params;
     }
 
     function renderList() {
@@ -194,10 +384,34 @@
 
       state.jobs.forEach((job, index) => {
         const card = document.createElement('article');
-        card.className = `job-card bg-white border border-slate-200 rounded-xl p-4 shadow-sm ${index === state.selectedIndex ? 'job-selected' : ''}`;
+        card.className = `job-card bg-white rounded-xl p-4 shadow-sm ${index === state.selectedIndex ? 'job-selected' : ''}`;
         card.dataset.index = String(index);
+        card.dataset.id = String(job.id);
+        card.style.animationDelay = `${Math.min(index * 25, 180)}ms`;
+
         const hits = (() => {
           try { return job.hits ? JSON.parse(job.hits) : []; } catch { return []; }
+        })();
+
+        const actions = (() => {
+          if (state.stage === 'inbox') {
+            return `
+              <button data-action="approved" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-teal-100 text-teal-800 text-sm font-medium">Approve</button>
+              <button data-action="skipped" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm font-medium">Skip</button>
+            `;
+          }
+          if (state.stage === 'approved') {
+            return `
+              <button data-action="applied" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-800 text-sm font-medium">Mark Applied</button>
+              <button data-action="skipped" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm font-medium">Archive</button>
+            `;
+          }
+          if (state.stage === 'archive') {
+            return `
+              <button data-action="approved" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-sky-100 text-sky-800 text-sm font-medium">Move to Approved</button>
+            `;
+          }
+          return '';
         })();
 
         card.innerHTML = `
@@ -222,9 +436,7 @@
             </div>
             <div class="flex flex-col gap-2 shrink-0">
               <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[job.status] || 'bg-slate-100 text-slate-700'}">${job.status || 'inbox'}</span>
-              <button data-action="approved" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-sky-100 text-sky-800 text-sm">Approve</button>
-              <button data-action="applied" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-800 text-sm">Applied</button>
-              <button data-action="skipped" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm">Skip</button>
+              ${actions}
               <button data-action="provenance" data-id="${job.id}" class="px-3 py-1.5 rounded-md bg-indigo-100 text-indigo-800 text-sm">Provenance</button>
             </div>
           </div>
@@ -238,7 +450,7 @@
       el.prevPage.disabled = state.page <= 1;
       el.nextPage.disabled = state.page >= totalPages;
       el.pageStats.textContent = `Page ${state.page}, size ${state.pageSize}`;
-      el.stats.textContent = `${state.total} total jobs`;
+      el.stats.textContent = `${state.total} jobs in ${state.stage}`;
     }
 
     async function loadRuns() {
@@ -259,21 +471,32 @@
       }
     }
 
+    async function loadStageCounts() {
+      try {
+        const stages = ['inbox', 'approved', 'applied', 'archive'];
+        const requests = stages.map(async (stage) => {
+          const params = buildFilterParams(stage);
+          params.set('page', '1');
+          params.set('pageSize', '1');
+          const res = await fetch(`/jobs?${params.toString()}`);
+          if (!res.ok) return [stage, 0];
+          const data = await res.json();
+          return [stage, data.meta?.total || 0];
+        });
+        const pairs = await Promise.all(requests);
+        for (const [stage, total] of pairs) state.stageCounts[stage] = total;
+        renderStageButtons();
+      } catch {
+        // keep quiet, counts are a convenience
+      }
+    }
+
     async function load() {
       clearError();
       el.loading.classList.remove('hidden');
       applyQueryStateToUrl();
 
-      const params = new URLSearchParams();
-      if (el.tier.value) params.set('tier', el.tier.value);
-      if (el.status.value) params.set('status', el.status.value);
-      if (el.source.value) params.set('source', el.source.value);
-      if (el.sort.value) params.set('sort', el.sort.value);
-      if (el.q.value) params.set('q', el.q.value);
-      if (el.minScore.value) params.set('minScore', el.minScore.value);
-      if (el.seenWithinDays.value) params.set('seenWithinDays', el.seenWithinDays.value);
-      if (el.bigtech.checked) params.set('bigtech', 'true');
-      if (el.hasErrors.checked) params.set('hasErrors', 'true');
+      const params = buildFilterParams(state.stage);
       params.set('page', String(state.page));
       params.set('pageSize', String(state.pageSize));
 
@@ -290,6 +513,7 @@
       } finally {
         el.loading.classList.add('hidden');
         loadRuns();
+        loadStageCounts();
       }
     }
 
@@ -303,13 +527,58 @@
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         showError(err.error || 'Failed to update status');
-        return;
+        return false;
       }
       const payload = await res.json();
       if (payload.syncWarning) {
         showError(`Status updated, but sync warning: ${payload.syncWarning}`);
       }
-      load();
+      return true;
+    }
+
+    async function animateChoice(id, status) {
+      const card = el.list.querySelector(`.job-card[data-id="${id}"]`);
+      const job = state.jobs.find((j) => j.id === Number(id));
+      const prevStatus = job?.status || STAGE_TO_STATUS[state.stage] || 'inbox';
+      if (card) {
+        card.classList.add(`choice-${status}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 210));
+
+      const ok = await updateStatus(id, status);
+      if (!ok) {
+        if (card) card.classList.remove(`choice-${status}`);
+        return;
+      }
+
+      state.jobs = state.jobs.filter((job) => job.id !== Number(id));
+      state.total = Math.max(0, state.total - 1);
+      if (state.selectedIndex >= state.jobs.length) state.selectedIndex = Math.max(0, state.jobs.length - 1);
+      renderList();
+      if (prevStatus !== status) {
+        showUndoToast({
+          jobId: Number(id),
+          previousStatus: prevStatus,
+          newStatus: status,
+          message: `${job?.company || 'Job'} moved to ${status}.`,
+        });
+      }
+      el.stageSummary.classList.add('pulse-notice');
+      setTimeout(() => el.stageSummary.classList.remove('pulse-notice'), 300);
+      loadStageCounts();
+      if (!state.jobs.length) load();
+    }
+
+    async function undoLastAction() {
+      if (!state.pendingUndo) return;
+      const payload = state.pendingUndo;
+      hideUndoToast();
+      const ok = await updateStatus(payload.jobId, payload.previousStatus);
+      if (!ok) {
+        showError('Failed to undo the last action');
+        return;
+      }
+      await load();
     }
 
     async function loadProvenance(id) {
@@ -342,6 +611,20 @@
       load();
     };
 
+    function setStage(stage) {
+      if (!STAGE_TO_STATUS[stage]) return;
+      if (state.stage === stage) return;
+      state.stage = stage;
+      state.page = 1;
+      state.selectedIndex = 0;
+      renderStageButtons();
+      load();
+    }
+
+    el.stageButtons.forEach((button) => {
+      button.addEventListener('click', () => setStage(button.dataset.stage));
+    });
+
     el.list.addEventListener('click', (event) => {
       const button = event.target.closest('button');
       const card = event.target.closest('.job-card');
@@ -354,7 +637,7 @@
       const action = button.dataset.action;
       if (action === 'provenance') return loadProvenance(id);
       if (action === 'approved' || action === 'applied' || action === 'skipped') {
-        return updateStatus(id, action);
+        return animateChoice(id, action);
       }
     });
 
@@ -398,7 +681,11 @@
       }
     });
 
-    [el.tier, el.status, el.source, el.sort, el.minScore, el.seenWithinDays, el.bigtech, el.hasErrors].forEach((node) => {
+    el.undoBtn.addEventListener('click', () => {
+      undoLastAction();
+    });
+
+    [el.tier, el.source, el.sort, el.minScore, el.seenWithinDays, el.bigtech, el.hasErrors].forEach((node) => {
       node.addEventListener('change', triggerReload);
     });
 
@@ -412,9 +699,13 @@
       const key = event.key.toLowerCase();
       if (key === 'j') selectRelative(1);
       if (key === 'k') selectRelative(-1);
-      if (key === 'a' && selectedJob()) updateStatus(selectedJob().id, 'approved');
-      if (key === 's' && selectedJob()) updateStatus(selectedJob().id, 'skipped');
-      if (key === 'l' && selectedJob()) updateStatus(selectedJob().id, 'applied');
+      if (key === 'a' && selectedJob()) animateChoice(selectedJob().id, 'approved');
+      if (key === 's' && selectedJob()) animateChoice(selectedJob().id, 'skipped');
+      if (key === 'l' && selectedJob()) animateChoice(selectedJob().id, 'applied');
+      if (key === 'z' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        undoLastAction();
+      }
     });
 
     restoreQueryStateFromUrl();

@@ -124,3 +124,8 @@ export PD_DB_PATH="/path/to/personal-dashboard/data/messages.db"
   - Evaluate/add YC Jobs (`https://www.ycombinator.com/jobs`) ingestion adapter.
   - Evaluate/add Wellfound (`https://wellfound.com/`) ingestion adapter.
   - Add config toggle to run startup profile on its own cadence.
+- LLM-assisted fit scoring (future):
+  - Use an LLM to analyze each JD against personal background (skills, projects, experience).
+  - Produce structured match signals (skill overlap, missing requirements, seniority fit).
+  - Feed those signals into the existing scoring pipeline to adjust `score`/`tier`.
+  - Add explanation output so fit changes are transparent in the review UI.
