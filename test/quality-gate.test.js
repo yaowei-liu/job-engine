@@ -54,3 +54,37 @@ test('deterministic gate marks borderline for optional llm review', () => {
   assert.equal(out.qualityBucket, 'borderline');
   assert.equal(out.needsLLM, true);
 });
+
+test('deterministic gate does not hard-penalize missing must-have skills', () => {
+  const out = evaluateDeterministicFit(
+    {
+      title: 'Software Engineer',
+      location: 'Toronto, ON, Canada',
+      jd_text: 'Software engineer role building APIs and internal tools',
+    },
+    profile,
+    { minInboxScore: 70, borderlineMin: 20, borderlineMax: 69 }
+  );
+
+  assert.equal(out.qualityBucket, 'borderline');
+  assert.equal(out.needsLLM, true);
+  assert.equal(out.reasonCodes.includes('must_skill:none'), true);
+});
+
+test('deterministic gate hard-filters experience variants for 8+ years keyword', () => {
+  const profileWithYears = {
+    ...profile,
+    hard_exclusions: [...profile.hard_exclusions, '8+ years'],
+  };
+  const out = evaluateDeterministicFit(
+    {
+      title: 'Software Engineer',
+      location: 'Toronto, ON, Canada',
+      jd_text: 'Candidates need at least 9 years of experience building distributed systems',
+    },
+    profileWithYears
+  );
+
+  assert.equal(out.qualityBucket, 'filtered');
+  assert.equal(out.reasonCodes.includes('hard_exclusion:8+ years'), true);
+});

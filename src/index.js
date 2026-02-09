@@ -221,6 +221,19 @@ function normalizeLlmProgress(input = {}) {
   };
 }
 
+function bumpQualityReasonStats(qualitySummary, reasonCodes = []) {
+  const reasons = Array.isArray(reasonCodes) ? reasonCodes : [];
+  if (reasons.some((code) => String(code).startsWith('hard_exclusion:'))) {
+    qualitySummary.hardExclusionCount += 1;
+  }
+  if (reasons.includes('location:mismatch')) {
+    qualitySummary.locationMismatchCount += 1;
+  }
+  if (reasons.includes('must_skill:none')) {
+    qualitySummary.mustNoneCount += 1;
+  }
+}
+
 function setRunProgress(runId, values = {}) {
   const current = runProgress.get(runId) || { runId };
   const merged = { ...current, ...values };
@@ -275,6 +288,10 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
     admittedToInbox: 0,
     filteredOut: 0,
     llmUsed: 0,
+    hardExclusionCount: 0,
+    locationMismatchCount: 0,
+    mustNoneCount: 0,
+    borderlineSentToLlmCount: 0,
   };
 
   const summary = {
@@ -356,7 +373,9 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
         if (result.admittedToInbox) qualitySummary.admittedToInbox += 1;
         else qualitySummary.filteredOut += 1;
         if (result.llmUsed) qualitySummary.llmUsed += 1;
+        bumpQualityReasonStats(qualitySummary, result.reasonCodes || []);
         if (result.llmEligible) {
+          qualitySummary.borderlineSentToLlmCount += 1;
           summary.llm.eligible += 1;
           if (result.llmAttempted) summary.llm.attempted += 1;
           if (result.llmUsed) summary.llm.completed += 1;
@@ -654,6 +673,10 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
       admittedToInbox: 0,
       filteredOut: 0,
       llmUsed: 0,
+      hardExclusionCount: 0,
+      locationMismatchCount: 0,
+      mustNoneCount: 0,
+      borderlineSentToLlmCount: 0,
     },
     llm: initLlmProgress(),
     sources: {
@@ -737,7 +760,9 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
 
         summary.totals.reevaluated += 1;
         if (fit.llmUsed) summary.quality.llmUsed += 1;
+        bumpQualityReasonStats(summary.quality, fit.reasonCodes || []);
         if (fit.llmEligible) {
+          summary.quality.borderlineSentToLlmCount += 1;
           summary.llm.eligible += 1;
           if (fit.llmAttempted) summary.llm.attempted += 1;
           if (fit.llmUsed) summary.llm.completed += 1;

@@ -62,9 +62,9 @@
     "allow_unknown_post_date": false
   },
   "quality": {
-    "min_inbox_score": 55,
-    "borderline_min": 35,
-    "borderline_max": 54,
+    "min_inbox_score": 60,
+    "borderline_min": 25,
+    "borderline_max": 59,
     "llm_admit_threshold": 65,
     "allow_unknown_location": false
   },

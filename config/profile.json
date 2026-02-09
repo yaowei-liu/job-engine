@@ -4,26 +4,40 @@
     "backend engineer",
     "full stack engineer",
     "new grad",
-    "entry level"
+    "entry level",
+    "junior",        
+    "associate",    
+    "developer"      
   ],
   "must_have_skills": [
     "javascript",
     "typescript",
     "node",
-    "sql"
+    "sql",
+    "java",       
+    "c++",
+    "c"
+
   ],
   "nice_to_have_skills": [
     "react",
     "aws",
     "python",
     "docker",
-    "distributed systems"
+    "distributed systems",
+    "linux",        
+    "nginx",        
+    "ci/cd"         
   ],
   "location_preferences": [
     "toronto",
     "ontario",
     "canada",
-    "remote"
+    "remote",
+    "markham",      
+    "richmond hill", 
+    "vaughan",      
+    "gta"    
   ],
   "remote_policy": "hybrid_or_remote",
   "hard_exclusions": [
@@ -32,7 +46,13 @@
     "principal",
     "manager",
     "director",
+    "lead",          
+    "architect",     
+    "vp",
+    "head of",
     "10+ years",
-    "8+ years"
-  ]
+    "8+ years",
+    "5+ years",     
+    "sre",          
+    "support"        
 }

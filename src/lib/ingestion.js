@@ -486,6 +486,7 @@ async function ingestJob(job, runId) {
     source: normalized.source,
     title: normalized.title,
     qualityBucket: finalFit.qualityBucket,
+    reasonCodes: finalFit.reasonCodes || [],
     admittedToInbox: finalFit.admittedToInbox,
     llmUsed: finalFit.llmUsed,
     llmEligible: finalFit.llmEligible,

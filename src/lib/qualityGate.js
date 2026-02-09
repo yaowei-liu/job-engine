@@ -5,6 +5,31 @@ function countIncludes(text, keyword) {
   return (text.match(regex) || []).length;
 }
 
+function parseMinYearsKeyword(keyword) {
+  const m = String(keyword || '').toLowerCase().trim().match(/^(\d+)\s*\+\s*(?:years?|yrs?)$/);
+  if (!m) return null;
+  return parseInt(m[1], 10);
+}
+
+function hasMinYearsRequirement(text, minYears) {
+  if (!text || !Number.isFinite(minYears)) return false;
+  const regex = /\b(\d{1,2})\s*\+?\s*(?:years?|yrs?)\b(?:\s+of\s+experience)?/gi;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const value = parseInt(match[1], 10);
+    if (Number.isFinite(value) && value >= minYears) return true;
+  }
+  return false;
+}
+
+function hasHardExclusion(text, keyword) {
+  const minYears = parseMinYearsKeyword(keyword);
+  if (Number.isFinite(minYears)) {
+    return hasMinYearsRequirement(text, minYears);
+  }
+  return countIncludes(text, keyword) > 0;
+}
+
 function evaluateDeterministicFit(job = {}, profile = {}, options = {}) {
   const text = `${job.title || ''}\n${job.jd_text || ''}`.toLowerCase();
   const location = String(job.location || '').toLowerCase();
@@ -13,7 +38,7 @@ function evaluateDeterministicFit(job = {}, profile = {}, options = {}) {
   let hardRejected = false;
 
   for (const kw of profile.hard_exclusions || []) {
-    if (countIncludes(text, kw) > 0) {
+    if (hasHardExclusion(text, kw)) {
       reasonCodes.push(`hard_exclusion:${kw}`);
       hardRejected = true;
     }
@@ -65,7 +90,6 @@ function evaluateDeterministicFit(job = {}, profile = {}, options = {}) {
   }
 
   if ((profile.must_have_skills || []).length && mustHits === 0) {
-    score -= 15;
     reasonCodes.push('must_skill:none');
   }
 
