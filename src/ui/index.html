@@ -31,9 +31,14 @@
         <h1 class="text-2xl font-bold text-slate-800">🎯 Job Engine</h1>
         <p class="text-sm text-slate-500">自动化求职筛选系统</p>
       </div>
-      <button id="refresh" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-colors">
-        刷新列表
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="run-scan" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors">
+          立即扫描
+        </button>
+        <button id="refresh" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-colors">
+          刷新列表
+        </button>
+      </div>
     </header>
 
     <div class="grid gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200 md:grid-cols-6">
@@ -46,7 +51,8 @@
       <select id="status" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
         <option value="">所有状态</option>
         <option value="inbox">收件箱</option>
-        <option value="approved">已批准</option>
+        <option value="approved">已确认</option>
+        <option value="applied">已申请</option>
         <option value="skipped">已跳过</option>
       </select>
       <select id="source" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
@@ -96,7 +102,8 @@
 
       const statusBadges = {
         inbox: 'bg-amber-100 text-amber-700',
-        approved: 'bg-emerald-100 text-emerald-700',
+        approved: 'bg-sky-100 text-sky-700',
+        applied: 'bg-emerald-100 text-emerald-700',
         skipped: 'bg-slate-100 text-slate-500',
       };
 
@@ -126,7 +133,8 @@
               ${j.url ? `<a href="${j.url}" target="_blank" class="mt-2 inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">🔗 查看职位 →</a>` : ''}
             </div>
             <div class="flex flex-col gap-2 shrink-0">
-              <button data-id="${j.id}" data-status="approved" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-sm font-medium transition-colors">批准</button>
+              <button data-id="${j.id}" data-status="approved" class="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md text-sm font-medium transition-colors">已确认</button>
+              <button data-id="${j.id}" data-status="applied" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-sm font-medium transition-colors">已申请</button>
               <button data-id="${j.id}" data-status="skipped" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-sm font-medium transition-colors">跳过</button>
               <button data-company="${j.company}" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md text-sm font-medium transition-colors">忽略公司</button>
             </div>
@@ -173,6 +181,19 @@
       window.__sTimer = setTimeout(load, 300);
     });
     document.getElementById('refresh').addEventListener('click', load);
+    document.getElementById('run-scan').addEventListener('click', async () => {
+      const btn = document.getElementById('run-scan');
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '扫描中...';
+      try {
+        await fetch('/api/scheduler/run', { method: 'POST' });
+        await load();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
     load();
   </script>
 </body>

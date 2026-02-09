@@ -9,6 +9,7 @@ const { fetchAll: fetchLever, DEFAULT_BOARDS: LEVER_BOARDS } = require('./lib/so
 const { fetchAll: fetchSerp } = require('./lib/sources/serpapi');
 const { scoreJD } = require('./lib/score');
 const { extractYearsRequirement } = require('./lib/jdExtract');
+const { loadSearchConfig, buildQueriesFromConfig } = require('./lib/searchConfig');
 
 const app = express();
 app.use(express.json());
@@ -40,15 +41,27 @@ async function ingestJob(job) {
 
   const { score, tier, hits } = scoreJD(job.jd_text, job.post_date, job.title);
   const years_req = extractYearsRequirement(job.jd_text);
+  const companyKey = (job.company || '').trim().toLowerCase();
+  const titleKey = (job.title || '').trim().toLowerCase();
 
   return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?)`,
-      [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req],
-      function (err) {
-        if (err) return reject(err);
-        resolve({ id: this.lastID, score, tier, hits, title: job.title });
+    // De-dupe by company + title (URL can be null or vary)
+    db.get(
+      'SELECT id FROM job_queue WHERE lower(company) = ? AND lower(title) = ? LIMIT 1',
+      [companyKey, titleKey],
+      (checkErr, row) => {
+        if (checkErr) return reject(checkErr);
+        if (row) return resolve({ id: row.id, skipped: true, score, tier, hits, title: job.title });
+
+        db.run(
+          `INSERT OR IGNORE INTO job_queue (company, title, location, post_date, source, url, jd_text, score, tier, status, hits, years_req)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?)`,
+          [job.company, job.title, job.location, job.post_date, job.source, job.url, job.jd_text, score, tier, JSON.stringify(hits), years_req],
+          function (err) {
+            if (err) return reject(err);
+            resolve({ id: this.lastID, score, tier, hits, title: job.title });
+          }
+        );
       }
     );
   });
@@ -92,8 +105,9 @@ async function runFetcher() {
   }
 }
 
-// Scheduler: run every 15 minutes
-const FETCH_INTERVAL = 15 * 60 * 1000;
+// Scheduler: run every N minutes
+const FETCH_INTERVAL_MIN = parseInt(process.env.FETCH_INTERVAL_MIN || '15', 10);
+const FETCH_INTERVAL = FETCH_INTERVAL_MIN * 60 * 1000;
 let scheduled = null;
 
 async function startScheduler() {
