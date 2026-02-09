@@ -1,40 +1,64 @@
 <!doctype html>
-<html>
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Job Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(var(--border))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: '#0ea5e9', foreground: 'white' },
+            muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
+          }
+        }
+      }
+    }
+  </script>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 24px; }
-    .filters { display:flex; gap:12px; margin-bottom:16px; }
-    .job { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
-    .meta { color:#666; font-size:12px; }
-    .tierA { border-left:4px solid #2b8a3e; }
-    .tierB { border-left:4px solid #888; }
-    button { margin-right:8px; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; }
   </style>
 </head>
-<body>
-  <h1>Job Engine</h1>
-  <div class="filters">
-    <select id="tier">
-      <option value="">All tiers</option>
-      <option value="A">Tier A</option>
-      <option value="B">Tier B</option>
-    </select>
-    <select id="status">
-      <option value="">All status</option>
-      <option value="inbox">Inbox</option>
-      <option value="approved">Approved</option>
-      <option value="skipped">Skipped</option>
-    </select>
-    <button id="refresh">Refresh</button>
+<body class="bg-slate-50 text-slate-900 min-h-screen p-6">
+  <div class="max-w-6xl mx-auto">
+    <header class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800">🎯 Job Engine</h1>
+        <p class="text-sm text-slate-500">自动化求职筛选系统</p>
+      </div>
+      <button id="refresh" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-colors">
+        刷新列表
+      </button>
+    </header>
+
+    <div class="flex gap-4 mb-6 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+      <select id="tier" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+        <option value="">所有等级</option>
+        <option value="A">Tier A (高匹配)</option>
+        <option value="B">Tier B (中匹配)</option>
+      </select>
+      <select id="status" class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+        <option value="">所有状态</option>
+        <option value="inbox">收件箱</option>
+        <option value="approved">已批准</option>
+        <option value="skipped">已跳过</option>
+      </select>
+      <span id="stats" class="ml-auto text-sm text-slate-500 flex items-center"></span>
+    </div>
+
+    <div id="list" class="space-y-3"></div>
   </div>
-  <div id="list"></div>
 
   <script>
     const list = document.getElementById('list');
     const tier = document.getElementById('tier');
     const status = document.getElementById('status');
+    const stats = document.getElementById('stats');
 
     async function load() {
       const params = new URLSearchParams();
@@ -44,16 +68,41 @@
       const jobs = await res.json();
       list.innerHTML = '';
 
+      const tierColors = {
+        A: 'border-l-emerald-500 bg-emerald-50/50',
+        B: 'border-l-slate-400 bg-slate-50/50',
+      };
+
+      const statusBadges = {
+        inbox: 'bg-amber-100 text-amber-700',
+        approved: 'bg-emerald-100 text-emerald-700',
+        skipped: 'bg-slate-100 text-slate-500',
+      };
+
+      stats.textContent = `共 ${jobs.length} 条`;
+
       jobs.forEach(j => {
         const div = document.createElement('div');
-        div.className = `job tier${j.tier}`;
+        div.className = `job p-4 bg-white rounded-lg shadow-sm border border-slate-200 ${tierColors[j.tier] || tierColors.B} border-l-4`;
         div.innerHTML = `
-          <div><strong>${j.title}</strong> — ${j.company}</div>
-          <div class="meta">${j.location || ''} | score ${j.score} | tier ${j.tier} | ${j.source || ''}</div>
-          <div class="meta">${j.url ? `<a href="${j.url}" target="_blank">link</a>` : ''}</div>
-          <div>
-            <button data-id="${j.id}" data-status="approved">Approve</button>
-            <button data-id="${j.id}" data-status="skipped">Skip</button>
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="font-semibold text-slate-800 truncate">${j.title}</h3>
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusBadges[j.status] || 'bg-slate-100'}">${j.status || 'inbox'}</span>
+              </div>
+              <p class="text-sm text-slate-600">${j.company}</p>
+              <div class="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
+                ${j.location ? `<span>📍 ${j.location}</span>` : ''}
+                <span>📊 分数: ${j.score}</span>
+                ${j.source ? `<span>🔗 ${j.source}</span>` : ''}
+              </div>
+              ${j.url ? `<a href="${j.url}" target="_blank" class="mt-2 inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">🔗 查看职位 →</a>` : ''}
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button data-id="${j.id}" data-status="approved" class="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md text-sm font-medium transition-colors">批准</button>
+              <button data-id="${j.id}" data-status="skipped" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md text-sm font-medium transition-colors">跳过</button>
+            </div>
           </div>
         `;
         list.appendChild(div);
@@ -64,15 +113,17 @@
       const btn = e.target.closest('button');
       if (!btn) return;
       const id = btn.dataset.id;
-      const status = btn.dataset.status;
+      const newStatus = btn.dataset.status;
       await fetch(`/jobs/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status: newStatus })
       });
       load();
     });
 
+    tier.addEventListener('change', load);
+    status.addEventListener('change', load);
     document.getElementById('refresh').addEventListener('click', load);
     load();
   </script>
