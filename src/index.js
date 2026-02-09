@@ -100,6 +100,11 @@ async function ingestJob(job) {
 
 // Fetch and ingest jobs from all sources
 async function runFetcher() {
+  if (isFetching) {
+    console.log('[Scheduler] Skipping run; previous fetch still in progress');
+    return;
+  }
+  isFetching = true;
   console.log(`[Scheduler] Fetching jobs...`);
   const start = Date.now();
 
@@ -133,6 +138,8 @@ async function runFetcher() {
     console.log(`[Scheduler] Done. Ingested ${ingested}, skipped ${skipped}, took ${dur}ms`);
   } catch (err) {
     console.error('[Scheduler] Fetch failed:', err.message);
+  } finally {
+    isFetching = false;
   }
 }
 
@@ -174,7 +181,8 @@ async function runBigTechFetcher() {
 }
 
 // Scheduler: run every N minutes
-const FETCH_INTERVAL_MIN = parseInt(process.env.FETCH_INTERVAL_MIN || '15', 10);
+const rawIntervalMin = parseInt(process.env.FETCH_INTERVAL_MIN || '15', 10);
+const FETCH_INTERVAL_MIN = Number.isFinite(rawIntervalMin) && rawIntervalMin > 0 ? rawIntervalMin : 15;
 const FETCH_INTERVAL = FETCH_INTERVAL_MIN * 60 * 1000;
 const BIGTECH_FETCH_INTERVAL_MIN = parseInt(process.env.BIGTECH_FETCH_INTERVAL_MIN || '1440', 10);
 const BIGTECH_FETCH_INTERVAL = BIGTECH_FETCH_INTERVAL_MIN * 60 * 1000;
