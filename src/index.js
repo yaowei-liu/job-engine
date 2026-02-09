@@ -6,6 +6,7 @@ const { initDB } = require('./lib/db');
 const jobsRouter = require('./routes/jobs');
 const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS } = require('./lib/sources/greenhouse');
 const { fetchAll: fetchSerp } = require('./lib/sources/serpapi');
+const { loadSearchConfig, buildQueriesFromConfig } = require('./lib/searchConfig');
 
 const app = express();
 app.use(express.json());
@@ -14,11 +15,18 @@ app.use(express.json());
 const TARGET_BOARDS = (process.env.GREENHOUSE_BOARDS || DEFAULT_BOARDS.join(','))
   .split(',')
   .filter(Boolean);
-const SERP_QUERIES = (process.env.SERPAPI_QUERIES || '')
-  .split(',')
-  .map((q) => q.trim())
+
+const searchCfg = loadSearchConfig();
+const SERP_QUERIES = (buildQueriesFromConfig(searchCfg) || [])
+  .concat(
+    (process.env.SERPAPI_QUERIES || '')
+      .split(',')
+      .map((q) => q.trim())
+      .filter(Boolean)
+  )
   .filter(Boolean);
-const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
+
+const SERP_LOCATION = process.env.SERPAPI_LOCATION ? process.env.SERPAPI_LOCATION.trim() : undefined;
 
 // Ingest a single job into the queue
 async function ingestJob(job) {

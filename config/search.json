@@ -1,0 +1,8 @@
+{
+  "queries": ["software engineer", "backend developer", "full stack"],
+  "levels": ["junior", "entry", "new grad"],
+  "locations": ["toronto", "gta", "ontario"],
+  "negative": ["senior", "lead", "staff", "principal", "manager"],
+  "remote": true,
+  "full_time": true
+}
