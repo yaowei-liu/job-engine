@@ -7,6 +7,7 @@ const jobsRouter = require('./routes/jobs');
 const { fetchAll: fetchGreenhouse, DEFAULT_BOARDS: GH_BOARDS } = require('./lib/sources/greenhouse');
 const { fetchAll: fetchLever, DEFAULT_BOARDS: LEVER_BOARDS } = require('./lib/sources/lever');
 const { fetchAll: fetchSerp } = require('./lib/sources/serpapi');
+const { fetchAll: fetchAmazon } = require('./lib/sources/amazon');
 const { scoreJD } = require('./lib/score');
 const { extractYearsRequirement } = require('./lib/jdExtract');
 const { loadSearchConfig, buildQueriesFromConfig } = require('./lib/searchConfig');
@@ -41,6 +42,14 @@ const BIGTECH_LEVER_BOARDS = (process.env.BIGTECH_LEVER_BOARDS || '')
 const BIGTECH_GREENHOUSE_BOARDS = (process.env.BIGTECH_GREENHOUSE_BOARDS || '')
   .split(',')
   .map((b) => b.trim())
+  .filter(Boolean);
+const BIGTECH_AMAZON_QUERIES = (process.env.BIGTECH_AMAZON_QUERIES || 'software engineer,backend engineer,full stack,entry level,new grad,early career')
+  .split(',')
+  .map((q) => q.trim())
+  .filter(Boolean);
+const BIGTECH_AMAZON_LOCATIONS = (process.env.BIGTECH_AMAZON_LOCATIONS || 'Toronto, ON, Canada,Canada,Remote')
+  .split(',')
+  .map((q) => q.trim())
   .filter(Boolean);
 
 function isTorontoOrRemote(location) {
@@ -130,13 +139,14 @@ async function runBigTechFetcher() {
   const start = Date.now();
 
   try {
-    const [greenhouseJobs, leverJobs] = await Promise.all([
+    const [greenhouseJobs, leverJobs, amazonJobs] = await Promise.all([
       BIGTECH_GREENHOUSE_BOARDS.length ? fetchGreenhouse(BIGTECH_GREENHOUSE_BOARDS) : Promise.resolve([]),
       BIGTECH_LEVER_BOARDS.length ? fetchLever(BIGTECH_LEVER_BOARDS) : Promise.resolve([]),
+      fetchAmazon({ baseQueries: BIGTECH_AMAZON_QUERIES, locQueries: BIGTECH_AMAZON_LOCATIONS }),
     ]);
 
-    const jobs = [...greenhouseJobs, ...leverJobs]
-      .filter((j) => isTorontoOrRemote(j.location))
+    const jobs = [...greenhouseJobs, ...leverJobs, ...amazonJobs]
+      .filter((j) => isTorontoOrRemote(j.location) || j.meta?.is_virtual)
       .map((j) => ({ ...j, is_bigtech: true }));
 
     let ingested = 0;
