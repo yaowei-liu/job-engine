@@ -63,6 +63,7 @@ export async function animateChoice({
   stageToStatus,
   updateStatus,
   renderList,
+  syncListAfterRemoval,
   showUndoToast,
   loadStageCounts,
   load,
@@ -90,7 +91,11 @@ export async function animateChoice({
   state.jobs = state.jobs.filter((current) => current.id !== Number(id));
   state.total = Math.max(0, state.total - 1);
   if (state.selectedIndex >= state.jobs.length) state.selectedIndex = Math.max(0, state.jobs.length - 1);
-  renderList();
+  if (typeof syncListAfterRemoval === 'function') {
+    syncListAfterRemoval(Number(id));
+  } else {
+    renderList();
+  }
 
   if (prevStatus !== status) {
     showUndoToast({

@@ -7,7 +7,12 @@ import {
   updateJobStatus,
 } from './api.js';
 import { createState, STAGE_COPY, STAGE_TO_STATUS } from './state.js';
-import { renderList, renderRunSummary, renderStageButtons } from './render.js';
+import {
+  renderList,
+  renderRunSummary,
+  renderStageButtons,
+  syncListAfterRemoval,
+} from './render.js';
 import { animateChoice, createUndoController } from './actions.js';
 
 const state = createState();
@@ -226,6 +231,7 @@ function runChoice(id, status) {
     stageToStatus: STAGE_TO_STATUS,
     updateStatus: doUpdateStatus,
     renderList: () => renderList({ state, el }),
+    syncListAfterRemoval: (removedId) => syncListAfterRemoval({ state, el, removedId }),
     showUndoToast: undo.showUndoToast,
     loadStageCounts,
     load,
@@ -249,7 +255,7 @@ el.stageButtons.forEach((button) => {
 el.list.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   const card = event.target.closest('.job-card');
-  if (card) {
+  if (card && !button) {
     state.selectedIndex = Number(card.dataset.index || '0');
     renderList({ state, el });
   }

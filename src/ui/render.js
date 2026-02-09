@@ -100,6 +100,25 @@ export function renderList({ state, el }) {
   el.stats.textContent = `${state.total} jobs in ${state.stage}`;
 }
 
+export function syncListAfterRemoval({ state, el, removedId }) {
+  const removedCard = el.list.querySelector(`.job-card[data-id="${removedId}"]`);
+  if (removedCard) removedCard.remove();
+
+  const cards = Array.from(el.list.querySelectorAll('.job-card'));
+  cards.forEach((card, index) => {
+    card.dataset.index = String(index);
+    card.classList.toggle('job-selected', index === state.selectedIndex);
+  });
+
+  el.empty.classList.toggle('hidden', state.jobs.length > 0);
+  const totalPages = Math.max(Math.ceil(state.total / state.pageSize), 1);
+  el.pagination.textContent = `Page ${state.page} of ${totalPages}`;
+  el.prevPage.disabled = state.page <= 1;
+  el.nextPage.disabled = state.page >= totalPages;
+  el.pageStats.textContent = `Page ${state.page}, size ${state.pageSize}`;
+  el.stats.textContent = `${state.total} jobs in ${state.stage}`;
+}
+
 export function renderRunSummary({ run, el }) {
   if (!run) return;
   el.runStatus.textContent = run.status;
