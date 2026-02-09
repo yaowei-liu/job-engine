@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const { initDB } = require('./lib/db');
@@ -16,7 +18,7 @@ const SERP_QUERIES = (process.env.SERPAPI_QUERIES || '')
   .split(',')
   .map((q) => q.trim())
   .filter(Boolean);
-const SERP_LOCATION = process.env.SERPAPI_LOCATION || 'Toronto, ON, Canada';
+const SERP_LOCATION = (process.env.SERPAPI_LOCATION || '').trim();
 
 // Ingest a single job into the queue
 async function ingestJob(job) {
@@ -48,6 +50,8 @@ async function runFetcher() {
       TARGET_BOARDS.length ? fetchGreenhouse(TARGET_BOARDS) : Promise.resolve([]),
       SERP_QUERIES.length ? fetchSerp(SERP_QUERIES, SERP_LOCATION) : Promise.resolve([]),
     ]);
+
+    console.log(`[Scheduler] Sources: greenhouse=${greenhouseJobs.length}, serpapi=${serpJobs.length}`);
 
     const jobs = [...greenhouseJobs, ...serpJobs];
     let ingested = 0;
