@@ -43,6 +43,9 @@ function initDB() {
           status TEXT DEFAULT 'inbox',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          company_key TEXT,
+          title_key TEXT,
+          location_key TEXT,
           UNIQUE(company, title, url)
         )
       `, async (err) => {
@@ -55,9 +58,17 @@ function initDB() {
           await ensureColumn('job_queue', 'hits', 'TEXT');
           await ensureColumn('job_queue', 'years_req', 'TEXT');
           await ensureColumn('job_queue', 'is_bigtech', 'INTEGER DEFAULT 0');
+          await ensureColumn('job_queue', 'company_key', 'TEXT');
+          await ensureColumn('job_queue', 'title_key', 'TEXT');
+          await ensureColumn('job_queue', 'location_key', 'TEXT');
         } catch (e) {
           return reject(e);
         }
+
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_company_title_loc ON job_queue(company_key, title_key, location_key)`);
+        db.run(`UPDATE job_queue SET company_key = lower(trim(company)) WHERE company_key IS NULL`);
+        db.run(`UPDATE job_queue SET title_key = lower(trim(title)) WHERE title_key IS NULL`);
+        db.run(`UPDATE job_queue SET location_key = lower(trim(COALESCE(location, ''))) WHERE location_key IS NULL`);
 
         db.run(`
           CREATE TABLE IF NOT EXISTS preferences (
