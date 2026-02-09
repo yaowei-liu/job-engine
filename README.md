@@ -61,18 +61,25 @@ export SOURCE_FRESHNESS_HOURS=24
 export ALLOW_UNKNOWN_POST_DATE=false
 ```
 
-### Quality Gate + LLM Fit (optional)
+### Quality Gate + LLM Fit (env-only recommended)
 
 ```bash
 export QUALITY_MIN_INBOX_SCORE=55
 export QUALITY_BORDERLINE_MIN=35
 export QUALITY_BORDERLINE_MAX=54
 export QUALITY_LLM_ADMIT_THRESHOLD=65
-export LLM_ENABLED=false
+export LLM_ENABLED=true
 export LLM_DAILY_CAP=120
 export LLM_MAX_PER_RUN=30
+export LLM_TIMEOUT_MS=15000
 export LLM_MODEL="gpt-4o-mini"
-export OPENAI_API_KEY="<optional>"
+export LLM_BATCH_ENABLED=true
+export LLM_BATCH_THRESHOLD=20
+export LLM_BATCH_REALTIME_FALLBACK_COUNT=5
+export LLM_BATCH_MODEL="gpt-4o-mini"
+export LLM_BATCH_POLL_INTERVAL_SEC=30
+export LLM_BATCH_COMPLETION_WINDOW="24h"
+export OPENAI_API_KEY="<required when LLM_ENABLED=true>"
 ```
 
 ### Big-tech run (optional)

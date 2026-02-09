@@ -1,8 +1,30 @@
 {
-  "queries": ["software engineer", "backend developer", "full stack"],
-  "levels": ["junior", "entry", "new grad"],
-  "locations": ["toronto", "gta", "ontario"],
-  "negative": ["senior", "lead", "staff", "principal", "manager"],
+  "queries": [
+    "software engineer",
+    "backend engineer",
+    "full stack engineer",
+    "node.js engineer",
+    "typescript engineer"
+  ],
+  "levels": [
+    "new grad",
+    "entry level",
+    "junior"
+  ],
+  "locations": [
+    "toronto",
+    "remote canada"
+  ],
+  "negative": [
+    "senior",
+    "staff",
+    "principal",
+    "manager",
+    "director",
+    "architect",
+    "8+ years",
+    "10+ years"
+  ],
   "remote": true,
   "full_time": true
 }

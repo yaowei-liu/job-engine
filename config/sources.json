@@ -1,11 +1,10 @@
 {
   "scheduler": {
-    "fetch_interval_min": 15,
+    "fetch_interval_min": 30,
     "run_on_startup": true
   },
   "core": {
     "greenhouse_boards": [
-      "https://boards.greenhouse.io/stripe",
       "https://boards.greenhouse.io/coinbase",
       "https://boards.greenhouse.io/plaid",
       "https://boards.greenhouse.io/affirm",
@@ -15,14 +14,18 @@
       "https://boards.greenhouse.io/palantir",
       "https://boards.greenhouse.io/roblox",
       "https://boards.greenhouse.io/doordash",
-      "https://boards.greenhouse.io/uber"
+      "https://boards.greenhouse.io/pinterest",
+      "https://boards.greenhouse.io/wayfair",
+      "https://boards.greenhouse.io/grammarly"
     ],
     "lever_boards": [
       "https://jobs.lever.co/figma",
       "https://jobs.lever.co/reddit",
       "https://jobs.lever.co/flexport",
       "https://jobs.lever.co/netflix",
-      "https://jobs.lever.co/coursera"
+      "https://jobs.lever.co/coursera",
+      "https://jobs.lever.co/cohere",
+      "https://jobs.lever.co/atlassian"
     ],
     "ashby_targets": [
       "notion",
@@ -32,34 +35,38 @@
       "scaleai",
       "ramp",
       "retool",
-      "vercel"
+      "vercel",
+      "databricks"
     ],
     "workday_targets": [
       "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite",
       "https://oktawd.wd5.myworkdayjobs.com/en-US/Okta_Careers",
       "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced",
       "https://salesforce.wd1.myworkdayjobs.com/en-US/External_Career_Site",
-      "https://tesla.wd5.myworkdayjobs.com/en-US/TeslaCareers"
+      "https://tesla.wd5.myworkdayjobs.com/en-US/TeslaCareers",
+      "https://uber.wd1.myworkdayjobs.com/en-US/Uber_Careers"
     ]
   },
   "serpapi": {
     "queries": [
-      "software engineer new grad toronto",
+      "software engineer new grad 2026 toronto",
       "backend engineer entry level toronto",
-      "full stack engineer junior canada remote"
+      "full stack engineer junior remote canada",
+      "Shopify developer intern or new grad",
+      "Wealthsimple software engineer entry level"
     ],
-    "location": "Toronto, ON, Canada",
-    "fetch_interval_min": 1440,
-    "run_on_startup": false,
-    "monthly_query_cap": 250,
-    "budget_safety_reserve": 10,
-    "query_concurrency": 3
+    "location": "Toronto, Ontario, Canada",
+    "fetch_interval_min": 720,
+    "run_on_startup": true,
+    "monthly_query_cap": 300,
+    "budget_safety_reserve": 20,
+    "query_concurrency": 2
   },
   "freshness": {
-    "serpapi_hours": 24,
-    "serpapi_allow_unknown_post_date": false,
-    "source_hours": 24,
-    "allow_unknown_post_date": false
+    "serpapi_hours": 48,
+    "serpapi_allow_unknown_post_date": true,
+    "source_hours": 48,
+    "allow_unknown_post_date": true
   },
   "quality": {
     "min_inbox_score": 60,
@@ -68,36 +75,20 @@
     "llm_admit_threshold": 65,
     "allow_unknown_location": false
   },
-  "llm": {
-    "enabled": false,
-    "daily_cap": 120,
-    "max_per_run": 30,
-    "timeout_ms": 15000,
-    "model": "gpt-4o-mini",
-    "batch_enabled": true,
-    "batch_threshold": 20,
-    "batch_realtime_fallback_count": 5,
-    "batch_model": "gpt-4o-mini",
-    "batch_poll_interval_sec": 30,
-    "batch_completion_window": "24h"
-  },
   "bigtech": {
-    "greenhouse_boards": [],
-    "lever_boards": [],
     "amazon_queries": [
-      "software engineer",
-      "backend engineer",
-      "full stack",
-      "entry level",
-      "new grad",
+      "software engineer I",
+      "software development engineer I",
+      "frontend engineer I",
+      "new grad 2026",
       "early career"
     ],
     "amazon_locations": [
       "Toronto, ON, Canada",
-      "Canada",
+      "Vancouver, BC, Canada",
       "Remote"
     ],
-    "fetch_interval_min": 1440,
+    "fetch_interval_min": 360,
     "run_on_startup": true
   }
 }

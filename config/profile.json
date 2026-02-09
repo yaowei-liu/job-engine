@@ -5,19 +5,16 @@
     "full stack engineer",
     "new grad",
     "entry level",
-    "junior",        
-    "associate",    
-    "developer"      
+    "junior",
+    "associate"
   ],
   "must_have_skills": [
     "javascript",
     "typescript",
     "node",
     "sql",
-    "java",       
-    "c++",
-    "c"
-
+    "java",
+    "c++"
   ],
   "nice_to_have_skills": [
     "react",
@@ -52,8 +49,7 @@
     "head of",
     "10+ years",
     "8+ years",
-    "5+ years",     
-    "sre",          
-    "support"        
+    "5+ years",
+    "sre"
   ]
 }
