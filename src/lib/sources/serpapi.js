@@ -59,28 +59,33 @@ function fetchJobs(query, location = DEFAULT_LOCATION) {
     api_key: process.env.SERPAPI_KEY,
   };
 
-  if (location) params.location = location;
+  if (location && location.trim()) params.location = location.trim();
 
   return new Promise((resolve) => {
-    getJson(params, (json) => {
-      if (json?.error) {
-        console.error('[SerpAPI] API error:', json.error);
-        return resolve([]);
-      }
+    try {
+      getJson(params, (json) => {
+        if (json?.error) {
+          console.error('[SerpAPI] API error:', json.error);
+          return resolve([]);
+        }
 
-      const jobs = json?.jobs_results || [];
-      const mapped = jobs.map((job) => ({
-        company: job.company_name || 'Unknown',
-        title: job.title,
-        location: job.location || null,
-        post_date: normalizePostedAt(job.detected_extensions?.posted_at) || null,
-        source: 'serpapi',
-        url: job.related_links?.[0]?.link || job.share_link || null,
-        jd_text: job.description?.slice(0, 2000) || null,
-      }));
+        const jobs = json?.jobs_results || [];
+        const mapped = jobs.map((job) => ({
+          company: job.company_name || 'Unknown',
+          title: job.title,
+          location: job.location || null,
+          post_date: normalizePostedAt(job.detected_extensions?.posted_at) || null,
+          source: 'serpapi',
+          url: job.related_links?.[0]?.link || job.share_link || null,
+          jd_text: job.description?.slice(0, 2000) || null,
+        }));
 
-      resolve(mapped);
-    });
+        resolve(mapped);
+      });
+    } catch (err) {
+      console.error('[SerpAPI] SDK error:', err.message);
+      resolve([]);
+    }
   });
 }
 
