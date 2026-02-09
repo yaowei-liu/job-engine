@@ -1,0 +1,83 @@
+{
+  "scheduler": {
+    "fetch_interval_min": 15,
+    "run_on_startup": true
+  },
+  "core": {
+    "greenhouse_boards": [
+      "https://boards.greenhouse.io/stripe",
+      "https://boards.greenhouse.io/coinbase",
+      "https://boards.greenhouse.io/plaid",
+      "https://boards.greenhouse.io/affirm",
+      "https://boards.greenhouse.io/datadog",
+      "https://boards.greenhouse.io/snowflake",
+      "https://boards.greenhouse.io/airbnb",
+      "https://boards.greenhouse.io/palantir",
+      "https://boards.greenhouse.io/roblox",
+      "https://boards.greenhouse.io/doordash",
+      "https://boards.greenhouse.io/uber"
+    ],
+    "lever_boards": [
+      "https://jobs.lever.co/figma",
+      "https://jobs.lever.co/reddit",
+      "https://jobs.lever.co/flexport",
+      "https://jobs.lever.co/netflix",
+      "https://jobs.lever.co/coursera"
+    ],
+    "ashby_targets": [
+      "notion",
+      "stripe",
+      "openai",
+      "anthropic",
+      "scaleai",
+      "ramp",
+      "retool",
+      "vercel"
+    ],
+    "workday_targets": [
+      "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite",
+      "https://oktawd.wd5.myworkdayjobs.com/en-US/Okta_Careers",
+      "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced",
+      "https://salesforce.wd1.myworkdayjobs.com/en-US/External_Career_Site",
+      "https://tesla.wd5.myworkdayjobs.com/en-US/TeslaCareers"
+    ]
+  },
+  "serpapi": {
+    "queries": [
+      "software engineer new grad toronto",
+      "backend engineer entry level toronto",
+      "full stack engineer junior canada remote"
+    ],
+    "location": "Toronto, ON, Canada",
+    "fetch_interval_min": 1440,
+    "run_on_startup": false,
+    "monthly_query_cap": 250,
+    "budget_safety_reserve": 10,
+    "query_concurrency": 3
+  },
+  "freshness": {
+    "serpapi_hours": 24,
+    "serpapi_allow_unknown_post_date": false,
+    "source_hours": 24,
+    "allow_unknown_post_date": false
+  },
+  "bigtech": {
+    "greenhouse_boards": [],
+    "lever_boards": [],
+    "amazon_queries": [
+      "software engineer",
+      "backend engineer",
+      "full stack",
+      "entry level",
+      "new grad",
+      "early career"
+    ],
+    "amazon_locations": [
+      "Toronto, ON, Canada",
+      "Canada",
+      "Remote"
+    ],
+    "fetch_interval_min": 1440,
+    "run_on_startup": true
+  }
+}
