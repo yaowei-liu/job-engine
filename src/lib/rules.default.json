@@ -47,5 +47,7 @@
   "freshness": {
     "hours24": 20,
     "days7": 10
-  }
+  },
+  "titleBoost": 2,
+  "maxKeywordHits": 5
 }

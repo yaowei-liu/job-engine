@@ -6,27 +6,54 @@ function loadRules() {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-function scoreJD(jdText, postDateIso) {
+function countOccurrences(text, keyword) {
+  if (!text || !keyword) return 0;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(escaped, 'gi');
+  return (text.match(regex) || []).length;
+}
+
+function scoreJD(jdText, postDateIso, titleText = '') {
   const rules = loadRules();
   const text = (jdText || '').toLowerCase();
+  const title = (titleText || '').toLowerCase();
 
   let score = 0;
   let tier = 'B';
   const hits = [];
 
+  const titleBoost = rules.titleBoost || 2;
+  const maxHits = rules.maxKeywordHits || 5;
+
   // Tier A match
   for (const [kw, w] of Object.entries(rules.tiers.A.keywords)) {
-    if (text.includes(kw)) { score += w; hits.push(`+A:${kw}`); tier = 'A'; }
+    const count = countOccurrences(text, kw);
+    if (count > 0) {
+      score += Math.min(count, maxHits) * w;
+      if (title.includes(kw)) score += w * titleBoost;
+      hits.push(`+A:${kw}x${count}`);
+      tier = 'A';
+    }
   }
 
   // Tier B match
   for (const [kw, w] of Object.entries(rules.tiers.B.keywords)) {
-    if (text.includes(kw)) { score += w; hits.push(`+B:${kw}`); }
+    const count = countOccurrences(text, kw);
+    if (count > 0) {
+      score += Math.min(count, maxHits) * w;
+      if (title.includes(kw)) score += w * titleBoost;
+      hits.push(`+B:${kw}x${count}`);
+    }
   }
 
   // Negatives
   for (const [kw, w] of Object.entries(rules.negative)) {
-    if (text.includes(kw)) { score -= w; hits.push(`-:${kw}`); }
+    const count = countOccurrences(text, kw);
+    if (count > 0) {
+      score -= Math.min(count, maxHits) * w;
+      if (title.includes(kw)) score -= w * titleBoost;
+      hits.push(`-:${kw}x${count}`);
+    }
   }
 
   // Freshness
