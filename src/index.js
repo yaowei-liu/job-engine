@@ -305,7 +305,15 @@ function pruneRunProgress() {
 
 setInterval(pruneRunProgress, 60 * 1000).unref();
 
-async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs) => jobs, qualityOptions = {}, llmMode = 'auto' }) {
+async function runPipeline({
+  triggerType,
+  label,
+  sourceTasks,
+  transform = (jobs) => jobs,
+  qualityOptions = {},
+  llmMode = 'auto',
+  requestedSources = [],
+}) {
   const runId = await createRun(triggerType);
   const start = Date.now();
   const runQualityOptions = qualityOptions || {};
@@ -323,6 +331,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
     runId,
     trigger: triggerType,
     label,
+    requestedSources: Array.isArray(requestedSources) ? requestedSources : [],
     startedAt: new Date().toISOString(),
     finishedAt: null,
     durationMs: 0,
@@ -372,6 +381,12 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       }
       if (r.meta?.warning) {
         summary.warnings.push(`${r.source}: ${r.meta.warning}`);
+      }
+      if (r.meta?.budget?.reason) {
+        summary.warnings.push(`${r.source}: ${r.meta.budget.reason}`);
+      }
+      if ((r.meta?.freshness?.rawFetched || 0) > 0 && r.jobs.length === 0) {
+        summary.warnings.push(`${r.source}: all_filtered_by_freshness`);
       }
     }
     syncRunProgress(runId, summary, 'running');
@@ -688,6 +703,7 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
     const response = await runPipeline({
       triggerType,
       label: 'core',
+      requestedSources: Array.from(sourceSet),
       qualityOptions: buildQualityOptionsForRun(llmMode),
       llmMode,
       sourceTasks,
@@ -726,6 +742,7 @@ async function runSerpFetcher(triggerType = 'scheduler_serpapi', opts = {}) {
     const response = await runPipeline({
       triggerType,
       label: 'serpapi',
+      requestedSources: ['serpapi'],
       qualityOptions: buildQualityOptionsForRun(llmMode),
       llmMode,
       sourceTasks: [
@@ -818,6 +835,7 @@ async function runBigTechFetcher(triggerType = 'scheduler_bigtech', opts = {}) {
     const response = await runPipeline({
       triggerType,
       label: 'bigtech',
+      requestedSources: ['greenhouse', 'lever', 'amazon'],
       qualityOptions: buildQualityOptionsForRun(llmMode),
       llmMode,
       sourceTasks: [

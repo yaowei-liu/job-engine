@@ -43,6 +43,7 @@ const el = {
   nextPage: document.getElementById('next-page'),
   runStatus: document.getElementById('run-status'),
   runSummary: document.getElementById('run-summary'),
+  runSources: document.getElementById('run-sources'),
   runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
   runWarnings: document.getElementById('run-warnings'),
@@ -70,7 +71,7 @@ const el = {
   runScan: document.getElementById('run-scan'),
   cleanupInbox: document.getElementById('cleanup-inbox'),
   llmMode: document.getElementById('llm-mode'),
-  manualSources: document.getElementById('manual-sources'),
+  manualSourceChecks: Array.from(document.querySelectorAll('.manual-source')),
   closeProvenance: document.getElementById('close-provenance'),
 };
 
@@ -272,10 +273,11 @@ function sleep(ms) {
 }
 
 function getManualSourcesSelection() {
-  const select = el.manualSources;
-  if (!select) return ['greenhouse', 'lever', 'ashby', 'workday'];
-  const selected = Array.from(select.selectedOptions || [])
-    .map((opt) => String(opt.value || '').trim().toLowerCase())
+  const checks = Array.isArray(el.manualSourceChecks) ? el.manualSourceChecks : [];
+  if (!checks.length) return ['greenhouse', 'lever', 'ashby', 'workday'];
+  const selected = checks
+    .filter((node) => !!node.checked)
+    .map((node) => String(node.value || '').trim().toLowerCase())
     .filter(Boolean);
   return selected.length ? selected : ['greenhouse', 'lever', 'ashby', 'workday'];
 }

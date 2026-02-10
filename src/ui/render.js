@@ -185,12 +185,18 @@ export function renderRunSummary({ run, el }) {
   const quality = run.summary?.quality || {};
   const llm = run.summary?.llm || {};
   const warnings = Array.isArray(run.summary?.warnings) ? run.summary.warnings : [];
+  const requestedSources = Array.isArray(run.summary?.requestedSources) && run.summary.requestedSources.length
+    ? run.summary.requestedSources
+    : Object.keys(run.summary?.sources || {});
   const resurfaced = totals.resurfaced || 0;
   const queuedText = llm.batchQueued ? `, batch queued ${llm.batchQueued}` : '';
   el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, resurfaced ${resurfaced}, failed ${totals.failed || 0}${queuedText}.`;
   const hard = quality.hardExclusionCount || 0;
   const loc = quality.locationMismatchCount || 0;
   const llmEligible = quality.borderlineSentToLlmCount || 0;
+  if (el.runSources) {
+    el.runSources.textContent = `Sources used: ${requestedSources.join(', ') || '-'}`;
+  }
   if (el.runQualityHints) {
     el.runQualityHints.textContent = `Quality: hard exclusions ${hard}, location mismatches ${loc}, borderline sent to LLM ${llmEligible}.`;
   }

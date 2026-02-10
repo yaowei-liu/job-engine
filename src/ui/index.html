@@ -23,21 +23,21 @@
             <option value="batch">Force batch</option>
           </select>
         </label>
-        <label class="text-xs text-slate-600 inline-flex items-center gap-1">
-          Sources
-          <select id="manual-sources" multiple size="4" class="px-2 py-1 rounded-md border border-slate-200 text-xs bg-white min-w-[210px]">
-            <option value="greenhouse" selected>Greenhouse</option>
-            <option value="lever" selected>Lever</option>
-            <option value="ashby" selected>Ashby</option>
-            <option value="workday" selected>Workday</option>
-            <option value="serpapi" selected>SerpAPI</option>
-            <option value="smartrecruiters">SmartRecruiters</option>
-            <option value="workable">Workable</option>
-            <option value="recruitee">Recruitee</option>
-            <option value="bamboohr">BambooHR</option>
-            <option value="jobvite">Jobvite</option>
-          </select>
-        </label>
+        <div class="text-xs text-slate-600">
+          <p class="mb-1">Sources</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="greenhouse" checked /> Greenhouse</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="lever" checked /> Lever</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="ashby" checked /> Ashby</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="workday" checked /> Workday</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="serpapi" checked /> SerpAPI</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="smartrecruiters" /> SmartRecruiters</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="workable" /> Workable</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="recruitee" /> Recruitee</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="bamboohr" /> BambooHR</label>
+            <label class="inline-flex items-center gap-1"><input class="manual-source rounded" type="checkbox" value="jobvite" /> Jobvite</label>
+          </div>
+        </div>
         <button id="run-scan" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Run Ingestion</button>
         <button id="cleanup-inbox" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium">Cleanup Inbox</button>
         <button id="refresh" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium">Refresh</button>
@@ -51,6 +51,7 @@
           <span id="run-status" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">No data</span>
         </div>
         <p id="run-summary" class="text-sm text-slate-600 mt-2">Waiting for run data...</p>
+        <p id="run-sources" class="text-xs text-slate-500 mt-1">Sources used: -</p>
         <p id="run-quality-hints" class="text-xs text-slate-500 mt-1">Quality diagnostics will appear after a run.</p>
         <div id="core-progress" class="mt-3">
           <div class="flex items-center justify-between text-xs text-slate-600">
