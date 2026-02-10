@@ -58,9 +58,14 @@ const BAMBOOHR_TARGETS = getListSetting(process.env.BAMBOOHR_TARGETS, coreCfg.ba
 const JOBVITE_TARGETS = getListSetting(process.env.JOBVITE_TARGETS, coreCfg.jobvite_targets, JOBVITE_DEFAULT_TARGETS);
 
 const searchCfg = loadSearchConfig();
-const SERP_QUERIES = (buildQueriesFromConfig(searchCfg) || [])
-  .concat(getListSetting(process.env.SERPAPI_QUERIES, serpapiCfg.queries, []))
-  .filter(Boolean);
+const SERP_EXPLICIT_QUERIES = getListSetting(process.env.SERPAPI_QUERIES, serpapiCfg.queries, []);
+const SERP_GENERATED_QUERIES = buildQueriesFromConfig(searchCfg) || [];
+const SERP_QUERIES = Array.from(new Set(
+  SERP_EXPLICIT_QUERIES
+    .concat(SERP_GENERATED_QUERIES)
+    .map((q) => String(q || '').trim())
+    .filter(Boolean)
+));
 
 const SERP_LOCATION = getStringSetting(process.env.SERPAPI_LOCATION, serpapiCfg.location, '').trim();
 const SERP_FRESHNESS_HOURS = getIntSetting(process.env.SERPAPI_FRESHNESS_HOURS, freshnessCfg.serpapi_hours, 24);
@@ -385,8 +390,24 @@ async function runPipeline({
       if (r.meta?.budget?.reason) {
         summary.warnings.push(`${r.source}: ${r.meta.budget.reason}`);
       }
+      if (
+        r.source === 'serpapi'
+        && (r.meta?.search?.attempted || 0) > 0
+        && (r.meta?.search?.succeeded || 0) === 0
+      ) {
+        summary.warnings.push('serpapi: all_queries_returned_empty');
+      }
       if ((r.meta?.freshness?.rawFetched || 0) > 0 && r.jobs.length === 0) {
         summary.warnings.push(`${r.source}: all_filtered_by_freshness`);
+      }
+      if (
+        !r.error
+        && r.jobs.length === 0
+        && Number.isFinite(r.meta?.targetsConfigured)
+        && r.meta.targetsConfigured > 0
+        && (r.meta?.freshness?.rawFetched || 0) === 0
+      ) {
+        summary.warnings.push(`${r.source}: no_jobs_returned_from_targets`);
       }
     }
     syncRunProgress(runId, summary, 'running');
@@ -523,7 +544,10 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
           if (!TARGET_BOARDS.length) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
-          return fetchGreenhouse(TARGET_BOARDS);
+          return fetchGreenhouse(TARGET_BOARDS).then((jobs) => ({
+            jobs,
+            meta: { targetsConfigured: TARGET_BOARDS.length },
+          }));
         },
       });
     if (sourceSet.has('lever')) sourceTasks.push({
@@ -532,7 +556,10 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
           if (!LEVER_TARGETS.length) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
-          return fetchLever(LEVER_TARGETS);
+          return fetchLever(LEVER_TARGETS).then((jobs) => ({
+            jobs,
+            meta: { targetsConfigured: LEVER_TARGETS.length },
+          }));
         },
       });
     if (sourceSet.has('ashby')) sourceTasks.push({
@@ -542,11 +569,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchAshby(ASHBY_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'ashby',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: ASHBY_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('workday')) sourceTasks.push({
@@ -556,11 +587,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchWorkday(WORKDAY_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'workday',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: WORKDAY_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('smartrecruiters')) sourceTasks.push({
@@ -570,11 +605,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchSmartRecruiters(SMARTRECRUITERS_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'smartrecruiters',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: SMARTRECRUITERS_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('workable')) sourceTasks.push({
@@ -584,11 +623,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchWorkable(WORKABLE_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'workable',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: WORKABLE_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('recruitee')) sourceTasks.push({
@@ -598,11 +641,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchRecruitee(RECRUITEE_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'recruitee',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: RECRUITEE_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('bamboohr')) sourceTasks.push({
@@ -612,11 +659,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchBambooHR(BAMBOOHR_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'bamboohr',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: BAMBOOHR_TARGETS.length },
+          };
         },
       });
     if (sourceSet.has('jobvite')) sourceTasks.push({
@@ -626,11 +677,15 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             return { jobs: [], meta: { warning: 'no_targets_configured' } };
           }
           const jobs = await fetchJobvite(JOBVITE_TARGETS);
-          return applySourceFreshness(jobs, {
+          const filtered = applySourceFreshness(jobs, {
             source: 'jobvite',
             hours: SOURCE_FRESHNESS_HOURS,
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
+          return {
+            jobs: filtered.jobs,
+            meta: { ...(filtered.meta || {}), targetsConfigured: JOBVITE_TARGETS.length },
+          };
         },
       });
 

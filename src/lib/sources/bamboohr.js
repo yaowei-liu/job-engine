@@ -1,8 +1,5 @@
 const DEFAULT_TARGETS = [];
-
-function stripHtml(html) {
-  return String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
+const { fetchJson, fetchText, stripHtml, parseJobPostingsFromHtml, locationFromJobPosting } = require('./http');
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -39,31 +36,52 @@ async function fetchJobs(target) {
   ];
 
   for (const apiUrl of endpoints) {
-    try {
-      const res = await fetch(apiUrl);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const rows = Array.isArray(data?.jobs)
-        ? data.jobs
-        : (Array.isArray(data) ? data : []);
-      const jobs = rows
-        .filter((j) => j?.jobOpeningName || j?.title)
-        .map((job) => ({
-          company,
-          title: job.jobOpeningName || job.title,
-          location: job.location || job.departmentLabel || null,
-          post_date: normalizeDate(job.date || job.datePublished || job.created || job.postedDate),
-          source: 'bamboohr',
-          url: job.jobOpeningUrl || job.url || null,
-          jd_text: stripHtml(job.description || job.descriptionLabel || '').slice(0, 2000) || null,
-          meta: {
-            bamboohr_id: job.id || job.jobOpeningId || null,
-          },
-        }));
-      console.log(`[BambooHR] Fetched ${jobs.length} jobs from ${company}`);
+    const { ok, data } = await fetchJson(apiUrl);
+    if (!ok || !data) continue;
+    const rows = Array.isArray(data?.jobs)
+      ? data.jobs
+      : (Array.isArray(data?.openings)
+        ? data.openings
+        : (Array.isArray(data?.result)
+          ? data.result
+          : (Array.isArray(data) ? data : [])));
+    const jobs = rows
+      .filter((j) => j?.jobOpeningName || j?.title)
+      .map((job) => ({
+        company,
+        title: job.jobOpeningName || job.title,
+        location: job.location || job.departmentLabel || null,
+        post_date: normalizeDate(job.date || job.datePublished || job.created || job.postedDate),
+        source: 'bamboohr',
+        url: job.jobOpeningUrl || job.url || null,
+        jd_text: stripHtml(job.description || job.descriptionLabel || '').slice(0, 2000) || null,
+        meta: {
+          bamboohr_id: job.id || job.jobOpeningId || null,
+        },
+      }));
+    console.log(`[BambooHR] Fetched ${jobs.length} jobs from ${company}`);
+    return jobs;
+  }
+
+  const pageUrl = `https://${company}.bamboohr.com/careers`;
+  const { ok: pageOk, text } = await fetchText(pageUrl);
+  if (pageOk && text) {
+    const postings = parseJobPostingsFromHtml(text);
+    const jobs = postings
+      .filter((p) => p?.title)
+      .map((p) => ({
+        company,
+        title: p.title,
+        location: locationFromJobPosting(p) || null,
+        post_date: normalizeDate(p.datePosted || p.validFrom),
+        source: 'bamboohr',
+        url: p.url || null,
+        jd_text: stripHtml(p.description || '').slice(0, 2000) || null,
+        meta: { bamboohr_id: p.identifier?.value || p.identifier || null },
+      }));
+    if (jobs.length) {
+      console.log(`[BambooHR] Fetched ${jobs.length} jobs from ${company} (html)`);
       return jobs;
-    } catch {
-      // try next
     }
   }
 
@@ -82,4 +100,3 @@ module.exports = {
   fetchAll,
   fetchJobs,
 };
-

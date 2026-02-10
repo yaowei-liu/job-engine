@@ -1,8 +1,5 @@
 const DEFAULT_TARGETS = [];
-
-function stripHtml(html) {
-  return String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
+const { fetchJson, fetchText, stripHtml, parseJobPostingsFromHtml, locationFromJobPosting } = require('./http');
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -55,26 +52,48 @@ async function fetchJobs(target) {
 
   const endpoints = [
     `https://jobs.jobvite.com/api/v1/job?company=${company}`,
-    `https://jobs.jobvite.com/${company}/jobs`,
+    `https://jobs.jobvite.com/api/v1/job/${company}`,
+    `https://jobs.jobvite.com/api/job/v1/${company}`,
   ];
 
   for (const apiUrl of endpoints) {
-    try {
-      const res = await fetch(apiUrl);
-      if (!res.ok) continue;
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) continue;
-      const data = await res.json();
-      const rows = Array.isArray(data?.jobs)
-        ? data.jobs
-        : (Array.isArray(data) ? data : []);
-      const jobs = rows
-        .map((job) => mapJob(company, job))
-        .filter((j) => j.title);
-      console.log(`[Jobvite] Fetched ${jobs.length} jobs from ${company}`);
+    const { ok, data } = await fetchJson(apiUrl);
+    if (!ok || !data) continue;
+    const rows = Array.isArray(data?.jobs)
+      ? data.jobs
+      : (Array.isArray(data?.requisitions)
+        ? data.requisitions
+        : (Array.isArray(data) ? data : []));
+    const jobs = rows
+      .map((job) => mapJob(company, job))
+      .filter((j) => j.title);
+    console.log(`[Jobvite] Fetched ${jobs.length} jobs from ${company}`);
+    return jobs;
+  }
+
+  const pageCandidates = [
+    `https://jobs.jobvite.com/${company}/jobs`,
+    `https://jobs.jobvite.com/${company}`,
+  ];
+  for (const pageUrl of pageCandidates) {
+    const { ok: pageOk, text } = await fetchText(pageUrl);
+    if (!pageOk || !text) continue;
+    const postings = parseJobPostingsFromHtml(text);
+    const jobs = postings
+      .filter((p) => p?.title)
+      .map((p) => ({
+        company,
+        title: p.title,
+        location: locationFromJobPosting(p) || null,
+        post_date: normalizeDate(p.datePosted || p.validFrom),
+        source: 'jobvite',
+        url: p.url || null,
+        jd_text: stripHtml(p.description || '').slice(0, 2000) || null,
+        meta: { jobvite_id: p.identifier?.value || p.identifier || null },
+      }));
+    if (jobs.length) {
+      console.log(`[Jobvite] Fetched ${jobs.length} jobs from ${company} (html)`);
       return jobs;
-    } catch {
-      // try next endpoint
     }
   }
 
@@ -93,4 +112,3 @@ module.exports = {
   fetchAll,
   fetchJobs,
 };
-

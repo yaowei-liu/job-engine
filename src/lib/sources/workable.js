@@ -1,8 +1,5 @@
 const DEFAULT_TARGETS = [];
-
-function stripHtml(html) {
-  return String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
+const { fetchJson, fetchText, stripHtml, parseJobPostingsFromHtml, locationFromJobPosting } = require('./http');
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -53,20 +50,39 @@ function mapJobs(account, rows = []) {
 
 async function fetchFromApiV3(account) {
   const apiUrl = `https://apply.workable.com/api/v3/accounts/${account}/jobs?state=published&limit=100`;
-  const res = await fetch(apiUrl);
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!Array.isArray(data?.results)) return [];
-  return mapJobs(account, data.results);
+  const { ok, data } = await fetchJson(apiUrl);
+  if (!ok || !data) return null;
+  const rows = Array.isArray(data?.results) ? data.results : (Array.isArray(data?.jobs) ? data.jobs : []);
+  return mapJobs(account, rows);
 }
 
 async function fetchFromApiV1(account) {
   const apiUrl = `https://apply.workable.com/api/v1/widget/accounts/${account}/jobs`;
-  const res = await fetch(apiUrl);
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!Array.isArray(data?.jobs)) return [];
-  return mapJobs(account, data.jobs);
+  const { ok, data } = await fetchJson(apiUrl);
+  if (!ok || !data) return null;
+  const rows = Array.isArray(data?.jobs) ? data.jobs : (Array.isArray(data?.results) ? data.results : []);
+  return mapJobs(account, rows);
+}
+
+async function fetchFromPublicPage(account) {
+  const pageUrl = `https://apply.workable.com/${account}`;
+  const { ok, text } = await fetchText(pageUrl);
+  if (!ok || !text) return [];
+  const postings = parseJobPostingsFromHtml(text);
+  return postings
+    .filter((p) => p?.title)
+    .map((p) => ({
+      company: account,
+      title: p.title,
+      location: locationFromJobPosting(p) || null,
+      post_date: normalizeDate(p.datePosted || p.validFrom),
+      source: 'workable',
+      url: p.url || null,
+      jd_text: stripHtml(p.description || '').slice(0, 2000) || null,
+      meta: {
+        workable_id: p.identifier?.value || p.identifier || null,
+      },
+    }));
 }
 
 async function fetchJobs(target) {
@@ -87,6 +103,11 @@ async function fetchJobs(target) {
       console.log(`[Workable] Fetched ${v1.length} jobs from ${account} (v1)`);
       return v1;
     }
+    const page = await fetchFromPublicPage(account);
+    if (Array.isArray(page) && page.length) {
+      console.log(`[Workable] Fetched ${page.length} jobs from ${account} (html)`);
+      return page;
+    }
     return [];
   } catch (err) {
     console.error(`[Workable] Failed to fetch ${account}:`, err.message);
@@ -105,4 +126,3 @@ module.exports = {
   fetchAll,
   fetchJobs,
 };
-
