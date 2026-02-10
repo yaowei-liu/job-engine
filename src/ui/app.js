@@ -11,6 +11,7 @@ import {
 import { createState, STAGE_COPY, STAGE_TO_STATUS } from './state.js';
 import {
   renderList,
+  renderSelectedCard,
   renderCoreProgress,
   renderLlmProgress,
   renderRunSummary,
@@ -44,6 +45,7 @@ const el = {
   runSummary: document.getElementById('run-summary'),
   runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
+  runWarnings: document.getElementById('run-warnings'),
   coreProgress: document.getElementById('core-progress'),
   coreProgressMeta: document.getElementById('core-progress-meta'),
   coreProgressBar: document.getElementById('core-progress-bar'),
@@ -68,7 +70,7 @@ const el = {
   runScan: document.getElementById('run-scan'),
   cleanupInbox: document.getElementById('cleanup-inbox'),
   llmMode: document.getElementById('llm-mode'),
-  includeSerpapi: document.getElementById('include-serpapi'),
+  manualSources: document.getElementById('manual-sources'),
   closeProvenance: document.getElementById('close-provenance'),
 };
 
@@ -217,7 +219,7 @@ async function loadProvenance(id) {
 function selectRelative(offset) {
   if (!state.jobs.length) return;
   state.selectedIndex = Math.min(Math.max(state.selectedIndex + offset, 0), state.jobs.length - 1);
-  renderList({ state, el });
+  renderSelectedCard({ state, el });
   const selected = document.querySelector(`.job-card[data-index="${state.selectedIndex}"]`);
   if (selected) selected.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -267,6 +269,15 @@ function setStage(stage) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getManualSourcesSelection() {
+  const select = el.manualSources;
+  if (!select) return ['greenhouse', 'lever', 'ashby', 'workday'];
+  const selected = Array.from(select.selectedOptions || [])
+    .map((opt) => String(opt.value || '').trim().toLowerCase())
+    .filter(Boolean);
+  return selected.length ? selected : ['greenhouse', 'lever', 'ashby', 'workday'];
 }
 
 async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
@@ -338,7 +349,7 @@ el.list.addEventListener('click', (event) => {
   const card = event.target.closest('.job-card');
   if (card && !button) {
     state.selectedIndex = Number(card.dataset.index || '0');
-    renderList({ state, el });
+    renderSelectedCard({ state, el });
   }
   if (!button) return;
   const id = button.dataset.id;
@@ -373,10 +384,8 @@ el.runScan.addEventListener('click', async () => {
   el.runScan.disabled = true;
   el.runScan.textContent = 'Running...';
   clearError();
-  const requestPromise = triggerIngestionRun(
-    el.llmMode?.value || 'auto',
-    !!el.includeSerpapi?.checked
-  );
+  const selectedSources = getManualSourcesSelection();
+  const requestPromise = triggerIngestionRun(el.llmMode?.value || 'auto', selectedSources);
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual',

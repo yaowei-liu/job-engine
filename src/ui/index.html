@@ -23,9 +23,20 @@
             <option value="batch">Force batch</option>
           </select>
         </label>
-        <label class="text-xs text-slate-600 inline-flex items-center gap-2">
-          <input id="include-serpapi" type="checkbox" class="rounded" />
-          Include SerpAPI
+        <label class="text-xs text-slate-600 inline-flex items-center gap-1">
+          Sources
+          <select id="manual-sources" multiple size="4" class="px-2 py-1 rounded-md border border-slate-200 text-xs bg-white min-w-[210px]">
+            <option value="greenhouse" selected>Greenhouse</option>
+            <option value="lever" selected>Lever</option>
+            <option value="ashby" selected>Ashby</option>
+            <option value="workday" selected>Workday</option>
+            <option value="serpapi" selected>SerpAPI</option>
+            <option value="smartrecruiters">SmartRecruiters</option>
+            <option value="workable">Workable</option>
+            <option value="recruitee">Recruitee</option>
+            <option value="bamboohr">BambooHR</option>
+            <option value="jobvite">Jobvite</option>
+          </select>
         </label>
         <button id="run-scan" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Run Ingestion</button>
         <button id="cleanup-inbox" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium">Cleanup Inbox</button>
@@ -62,6 +73,7 @@
           <p id="llm-progress-detail" class="mt-1 text-xs text-slate-500">No active run.</p>
         </div>
         <p id="run-errors" class="text-xs text-rose-600 mt-1"></p>
+        <p id="run-warnings" class="text-xs text-amber-700 mt-1"></p>
       </div>
       <div class="bg-white/95 border border-slate-200 rounded-xl p-4 shadow-sm">
         <h2 class="font-semibold">Queue Stats</h2>

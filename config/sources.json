@@ -16,7 +16,13 @@
       "https://boards.greenhouse.io/doordash",
       "https://boards.greenhouse.io/pinterest",
       "https://boards.greenhouse.io/wayfair",
-      "https://boards.greenhouse.io/grammarly"
+      "https://boards.greenhouse.io/grammarly",
+      "https://boards.greenhouse.io/stripe",
+      "https://boards.greenhouse.io/uber",
+      "https://boards.greenhouse.io/shopify",
+      "https://boards.greenhouse.io/lyft",
+      "https://boards.greenhouse.io/dropbox",
+      "https://boards.greenhouse.io/replit"
     ],
     "lever_boards": [
       "https://jobs.lever.co/figma",
@@ -25,7 +31,12 @@
       "https://jobs.lever.co/netflix",
       "https://jobs.lever.co/coursera",
       "https://jobs.lever.co/cohere",
-      "https://jobs.lever.co/atlassian"
+      "https://jobs.lever.co/atlassian",
+      "https://jobs.lever.co/wealthsimple",
+      "https://jobs.lever.co/waveapps",
+      "https://jobs.lever.co/waabi",
+      "https://jobs.lever.co/benchsci",
+      "https://jobs.lever.co/newton"
     ],
     "ashby_targets": [
       "notion",
@@ -36,7 +47,12 @@
       "ramp",
       "retool",
       "vercel",
-      "databricks"
+      "databricks",
+      "cursor",
+      "perplexity",
+      "mercor",
+      "scale",
+      "runway"
     ],
     "workday_targets": [
       "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite",
@@ -46,11 +62,37 @@
       "https://tesla.wd5.myworkdayjobs.com/en-US/TeslaCareers",
       "https://uber.wd1.myworkdayjobs.com/en-US/Uber_Careers"
     ],
-    "smartrecruiters_targets": [],
-    "workable_targets": [],
-    "recruitee_targets": [],
-    "bamboohr_targets": [],
-    "jobvite_targets": []
+    "smartrecruiters_targets": [
+      "https://jobs.smartrecruiters.com/Visa",
+      "https://jobs.smartrecruiters.com/Nokia",
+      "https://jobs.smartrecruiters.com/Ubisoft",
+      "https://jobs.smartrecruiters.com/BoschGroup",
+      "https://jobs.smartrecruiters.com/Criteo",
+      "https://jobs.smartrecruiters.com/Wise"
+    ],
+    "workable_targets": [
+      "https://apply.workable.com/canonical",
+      "https://apply.workable.com/doist",
+      "https://apply.workable.com/sourcegraph",
+      "https://apply.workable.com/gitbook",
+      "https://apply.workable.com/toggl",
+      "https://apply.workable.com/hotjar"
+    ],
+    "recruitee_targets": [
+      "https://jobs.recruitee.com/remote-com",
+      "https://jobs.recruitee.com/transferwise",
+      "https://jobs.recruitee.com/synapse"
+    ],
+    "bamboohr_targets": [
+      "https://zapier.bamboohr.com/careers",
+      "https://webflow.bamboohr.com/careers",
+      "https://g2.bamboohr.com/careers"
+    ],
+    "jobvite_targets": [
+      "https://jobs.jobvite.com/okta",
+      "https://jobs.jobvite.com/splunk",
+      "https://jobs.jobvite.com/procore"
+    ]
   },
   "serpapi": {
     "queries": [
@@ -58,7 +100,10 @@
       "backend engineer entry level toronto",
       "full stack engineer junior remote canada",
       "Shopify developer intern or new grad",
-      "Wealthsimple software engineer entry level"
+      "Wealthsimple software engineer entry level",
+      "frontend engineer junior toronto",
+      "new grad software developer canada remote",
+      "backend engineer 0-2 years canada"
     ],
     "location": "Toronto, Ontario, Canada",
     "fetch_interval_min": 720,

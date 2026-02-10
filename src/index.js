@@ -338,6 +338,7 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
     llm: initLlmProgress(),
     sources: {},
     errors: [],
+    warnings: [],
   };
   bootstrapRunProgress(runId, { trigger: triggerType, label, summary });
 
@@ -368,6 +369,9 @@ async function runPipeline({ triggerType, label, sourceTasks, transform = (jobs)
       summary.totals.fetched += r.jobs.length;
       if (r.error) {
         summary.errors.push(`${r.source}: ${r.error}`);
+      }
+      if (r.meta?.warning) {
+        summary.warnings.push(`${r.source}: ${r.meta.warning}`);
       }
     }
     syncRunProgress(runId, summary, 'running');
@@ -478,7 +482,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
   }
 
   const llmMode = clampLlmMode(opts.llmMode || 'auto');
-  const includeSerpapi = !!opts.includeSerpapi;
+  const requestedSources = Array.isArray(opts.sources)
+    ? opts.sources.map((s) => String(s || '').toLowerCase().trim()).filter(Boolean)
+    : [];
+  const sourceSet = new Set(requestedSources.length
+    ? requestedSources
+    : ['greenhouse', 'lever', 'ashby', 'workday']);
+  const includeSerpapi = sourceSet.has('serpapi') || !!opts.includeSerpapi;
   isFetching = true;
   try {
     const serpBudget = includeSerpapi && SERP_QUERIES.length
@@ -491,19 +501,31 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
     const serpPerRunLimit = Math.max(0, serpBudget?.perRunLimit || 0);
     const serpQueriesForRun = includeSerpapi ? SERP_QUERIES.slice(0, serpPerRunLimit) : [];
 
-    const sourceTasks = [
-      {
+    const sourceTasks = [];
+    if (sourceSet.has('greenhouse')) sourceTasks.push({
         source: 'greenhouse',
-        fetch: () => (TARGET_BOARDS.length ? fetchGreenhouse(TARGET_BOARDS) : Promise.resolve([])),
-      },
-      {
+        fetch: () => {
+          if (!TARGET_BOARDS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
+          return fetchGreenhouse(TARGET_BOARDS);
+        },
+      });
+    if (sourceSet.has('lever')) sourceTasks.push({
         source: 'lever',
-        fetch: () => (LEVER_TARGETS.length ? fetchLever(LEVER_TARGETS) : Promise.resolve([])),
-      },
-      {
+        fetch: () => {
+          if (!LEVER_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
+          return fetchLever(LEVER_TARGETS);
+        },
+      });
+    if (sourceSet.has('ashby')) sourceTasks.push({
         source: 'ashby',
         fetch: async () => {
-          if (!ASHBY_TARGETS.length) return [];
+          if (!ASHBY_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchAshby(ASHBY_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'ashby',
@@ -511,11 +533,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('workday')) sourceTasks.push({
         source: 'workday',
         fetch: async () => {
-          if (!WORKDAY_TARGETS.length) return [];
+          if (!WORKDAY_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchWorkday(WORKDAY_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'workday',
@@ -523,11 +547,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('smartrecruiters')) sourceTasks.push({
         source: 'smartrecruiters',
         fetch: async () => {
-          if (!SMARTRECRUITERS_TARGETS.length) return [];
+          if (!SMARTRECRUITERS_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchSmartRecruiters(SMARTRECRUITERS_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'smartrecruiters',
@@ -535,11 +561,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('workable')) sourceTasks.push({
         source: 'workable',
         fetch: async () => {
-          if (!WORKABLE_TARGETS.length) return [];
+          if (!WORKABLE_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchWorkable(WORKABLE_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'workable',
@@ -547,11 +575,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('recruitee')) sourceTasks.push({
         source: 'recruitee',
         fetch: async () => {
-          if (!RECRUITEE_TARGETS.length) return [];
+          if (!RECRUITEE_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchRecruitee(RECRUITEE_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'recruitee',
@@ -559,11 +589,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('bamboohr')) sourceTasks.push({
         source: 'bamboohr',
         fetch: async () => {
-          if (!BAMBOOHR_TARGETS.length) return [];
+          if (!BAMBOOHR_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchBambooHR(BAMBOOHR_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'bamboohr',
@@ -571,11 +603,13 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-      {
+      });
+    if (sourceSet.has('jobvite')) sourceTasks.push({
         source: 'jobvite',
         fetch: async () => {
-          if (!JOBVITE_TARGETS.length) return [];
+          if (!JOBVITE_TARGETS.length) {
+            return { jobs: [], meta: { warning: 'no_targets_configured' } };
+          }
           const jobs = await fetchJobvite(JOBVITE_TARGETS);
           return applySourceFreshness(jobs, {
             source: 'jobvite',
@@ -583,8 +617,7 @@ async function runFetcher(triggerType = 'manual', opts = {}) {
             allowUnknownDate: SOURCE_ALLOW_UNKNOWN_DATE,
           });
         },
-      },
-    ];
+      });
 
     if (includeSerpapi) {
       sourceTasks.push({
@@ -1213,8 +1246,9 @@ async function startScheduler() {
 
   app.post('/api/scheduler/run', async (req, res) => {
     const llmMode = clampLlmMode(req.body?.llmMode || 'auto');
+    const sources = Array.isArray(req.body?.sources) ? req.body.sources : null;
     const includeSerpapi = !!req.body?.includeSerpapi;
-    const result = await runFetcher('manual', { llmMode, includeSerpapi });
+    const result = await runFetcher('manual', { llmMode, sources, includeSerpapi });
     res.json(result);
   });
 

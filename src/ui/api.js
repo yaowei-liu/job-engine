@@ -45,11 +45,11 @@ export async function fetchProvenance(id) {
   return parseJsonOrThrow(res, `Failed to load provenance (${res.status})`);
 }
 
-export async function triggerIngestionRun(llmMode = 'auto', includeSerpapi = false) {
+export async function triggerIngestionRun(llmMode = 'auto', sources = []) {
   const res = await fetch('/api/scheduler/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ llmMode, includeSerpapi: !!includeSerpapi }),
+    body: JSON.stringify({ llmMode, sources: Array.isArray(sources) ? sources : [] }),
   });
   return parseJsonOrThrow(res, 'Failed to run ingestion');
 }

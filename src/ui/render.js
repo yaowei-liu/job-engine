@@ -151,6 +151,13 @@ export function renderList({ state, el }) {
   el.stats.textContent = `${state.total} jobs in ${state.stage}`;
 }
 
+export function renderSelectedCard({ state, el }) {
+  const cards = Array.from(el.list.querySelectorAll('.job-card'));
+  cards.forEach((card, index) => {
+    card.classList.toggle('job-selected', index === state.selectedIndex);
+  });
+}
+
 export function syncListAfterRemoval({ state, el, removedId }) {
   const removedCard = el.list.querySelector(`.job-card[data-id="${removedId}"]`);
   if (removedCard) removedCard.remove();
@@ -177,6 +184,7 @@ export function renderRunSummary({ run, el }) {
   const totals = run.summary?.totals || {};
   const quality = run.summary?.quality || {};
   const llm = run.summary?.llm || {};
+  const warnings = Array.isArray(run.summary?.warnings) ? run.summary.warnings : [];
   const resurfaced = totals.resurfaced || 0;
   const queuedText = llm.batchQueued ? `, batch queued ${llm.batchQueued}` : '';
   el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, resurfaced ${resurfaced}, failed ${totals.failed || 0}${queuedText}.`;
@@ -187,6 +195,9 @@ export function renderRunSummary({ run, el }) {
     el.runQualityHints.textContent = `Quality: hard exclusions ${hard}, location mismatches ${loc}, borderline sent to LLM ${llmEligible}.`;
   }
   el.runErrors.textContent = run.errorText || '';
+  if (el.runWarnings) {
+    el.runWarnings.textContent = warnings.length ? `Warnings: ${warnings.slice(0, 5).join(' | ')}` : '';
+  }
   renderCoreProgress({
     progress: {
       status: run.status,
