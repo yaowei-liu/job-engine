@@ -43,7 +43,8 @@ If you are migrating existing data, copy the old SQLite DB to the VM and place i
 ## 3. Start the service
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose ps
 curl http://127.0.0.1:3030/health
 ```
@@ -57,7 +58,8 @@ The app is then available on:
 
 ```bash
 git pull origin main
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ## 5. Optional: expose behind Nginx
@@ -66,7 +68,7 @@ If you want the app on a domain with HTTPS, put Nginx or Caddy in front of port 
 
 ## 6. GitHub Actions deploy migration
 
-The workflow at `.github/workflows/ci.yml` validates the project first, and `.github/workflows/deploy.yml` deploys only after `CI` succeeds for a push to `main`. Set these GitHub Actions secrets before pushing to `main`:
+The workflow at `.github/workflows/ci.yml` validates the project first and publishes a GHCR image from `main`. Then `.github/workflows/deploy.yml` deploys only after `CI` succeeds for a push to `main`. Set these GitHub Actions secrets before pushing to `main`:
 
 - `SERVER_HOST`: new VM public IP or hostname
 - `SERVER_USER`: SSH user on that VM
@@ -78,11 +80,13 @@ Expected layout on the VM:
 - repo cloned at `SERVER_PATH`
 - `.env` created manually at `SERVER_PATH/.env`
 - Docker and Docker Compose plugin installed
+- outbound access from the VM to `ghcr.io`
 
 Each push to `main` will then run:
 
 ```bash
-bash deploy/remote-deploy.sh
+docker compose pull
+docker compose up -d
 ```
 
 The remote deploy script now waits for `http://127.0.0.1:3030/health` before reporting success. If your app listens on another port, export `PORT` on the VM or adjust the container env accordingly.

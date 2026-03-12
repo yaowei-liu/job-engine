@@ -20,7 +20,8 @@ git fetch --all
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
 mkdir -p data
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose ps
 
 attempt=1

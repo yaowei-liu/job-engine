@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-    image: job-engine:latest
+    image: ${IMAGE_NAME:-ghcr.io/yaowei-liu/job-engine:main}
     restart: unless-stopped
     env_file:
       - .env

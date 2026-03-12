@@ -39,9 +39,10 @@ Detailed VM steps: `docs/deploy-vm.md`
 ## CI/CD
 
 - CI runs on every pull request, every push to `main`, and manual dispatch.
-- CI installs dependencies, runs `npm run lint`, runs `npm test`, and verifies the Docker image builds cleanly.
+- CI installs dependencies, runs `npm run lint`, runs `npm test`, and builds the Docker image.
+- Pushes to `main` publish the image to `ghcr.io/yaowei-liu/job-engine` with `main`, `latest`, and short-SHA tags.
 - CD runs only after the `CI` workflow succeeds for a push to `main`, or when triggered manually.
-- CD deploys to the remote VM over SSH and waits for `GET /health` to return success before marking the job green.
+- CD deploys to the remote VM over SSH, runs `docker compose pull && docker compose up -d`, and waits for `GET /health` to return success before marking the job green.
 
 ## Configuration
 
