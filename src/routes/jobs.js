@@ -44,6 +44,7 @@ router.get('/', async (req, res) => {
     hasErrors,
     seenWithinDays,
     includeFiltered,
+    llmPending,
     page = '1',
     pageSize = '50',
     legacy,
@@ -61,6 +62,11 @@ router.get('/', async (req, res) => {
     params.push(status);
   } else if (includeFiltered !== 'true') {
     whereSql += " AND status != 'filtered'";
+  }
+  if (llmPending === 'true') {
+    whereSql += " AND llm_review_state = 'pending'";
+  } else if (status === 'inbox') {
+    whereSql += " AND COALESCE(llm_review_state, 'none') != 'pending'";
   }
   if (source) {
     whereSql += ' AND source = ?';

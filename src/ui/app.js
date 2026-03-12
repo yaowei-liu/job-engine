@@ -61,6 +61,7 @@ const el = {
   provenanceContent: document.getElementById('provenance-content'),
   stageButtons: Array.from(document.querySelectorAll('.stage-btn')),
   countInbox: document.getElementById('count-inbox'),
+  countPendingLlm: document.getElementById('count-pending-llm'),
   countApproved: document.getElementById('count-approved'),
   countApplied: document.getElementById('count-applied'),
   countArchive: document.getElementById('count-archive'),
@@ -131,6 +132,7 @@ function buildFilterParams(stage = state.stage) {
   const params = new URLSearchParams();
   const status = STAGE_TO_STATUS[stage];
   if (status) params.set('status', status);
+  if (stage === 'pending_llm') params.set('llmPending', 'true');
   if (el.tier.value) params.set('tier', el.tier.value);
   if (el.source.value) params.set('source', el.source.value);
   if (el.sort.value) params.set('sort', el.sort.value);
@@ -154,7 +156,7 @@ async function loadRuns() {
 async function loadStageCounts() {
   const countsId = ++state.countsSeq;
   try {
-    const stages = ['inbox', 'approved', 'applied', 'archive', 'filtered'];
+    const stages = ['inbox', 'pending_llm', 'approved', 'applied', 'archive', 'filtered'];
     const pairs = await Promise.all(
       stages.map(async (stage) => [stage, await fetchStageCount(buildFilterParams(stage))])
     );
@@ -389,7 +391,9 @@ el.runScan.addEventListener('click', async () => {
   el.runScan.textContent = 'Running...';
   clearError();
   const selectedSources = getManualSourcesSelection();
-  const requestPromise = triggerIngestionRun(el.llmMode?.value || 'auto', selectedSources);
+  const requestedMode = el.llmMode?.value || 'auto';
+  const manualMode = requestedMode === 'auto' ? 'realtime' : requestedMode;
+  const requestPromise = triggerIngestionRun(manualMode, selectedSources);
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual',
@@ -414,7 +418,9 @@ el.cleanupInbox.addEventListener('click', async () => {
   el.cleanupInbox.disabled = true;
   el.cleanupInbox.textContent = 'Cleaning...';
   clearError();
-  const requestPromise = triggerInboxCleanupRun(el.llmMode?.value || 'auto');
+  const requestedMode = el.llmMode?.value || 'auto';
+  const manualMode = requestedMode === 'auto' ? 'realtime' : requestedMode;
+  const requestPromise = triggerInboxCleanupRun(manualMode);
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual_cleanup',

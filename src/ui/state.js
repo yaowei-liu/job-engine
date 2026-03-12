@@ -1,5 +1,6 @@
 export const STAGE_TO_STATUS = {
   inbox: 'inbox',
+  pending_llm: 'inbox',
   approved: 'approved',
   applied: 'applied',
   archive: 'skipped',
@@ -8,6 +9,7 @@ export const STAGE_TO_STATUS = {
 
 export const STAGE_COPY = {
   inbox: 'Viewing inbox: triage each item with approve or skip.',
+  pending_llm: 'Viewing LLM pending: queued for LLM review and waiting on final classification.',
   approved: 'Viewing approved: focus this list when you are ready to apply.',
   applied: 'Viewing applied: completed applications.',
   archive: 'Viewing archive: skipped jobs are stored here and shown less frequently.',
@@ -24,6 +26,7 @@ export function createState() {
     stage: 'inbox',
     stageCounts: {
       inbox: 0,
+      pending_llm: 0,
       approved: 0,
       applied: 0,
       archive: 0,

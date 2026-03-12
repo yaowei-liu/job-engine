@@ -6,6 +6,7 @@ export function renderStageButtons({ state, el, stageCopy }) {
   }
   el.stageSummary.textContent = stageCopy[state.stage];
   el.countInbox.textContent = state.stageCounts.inbox;
+  if (el.countPendingLlm) el.countPendingLlm.textContent = state.stageCounts.pending_llm;
   el.countApproved.textContent = state.stageCounts.approved;
   el.countApplied.textContent = state.stageCounts.applied;
   el.countArchive.textContent = state.stageCounts.archive;
@@ -52,7 +53,7 @@ function parseMissingSkills(value) {
 }
 
 function actionsForStage(stage, jobId) {
-  if (stage === 'inbox') {
+  if (stage === 'inbox' || stage === 'pending_llm') {
     return `
       <button data-action="approved" data-id="${jobId}" class="px-3 py-1.5 rounded-md bg-teal-100 text-teal-800 text-sm font-medium">Approve</button>
       <button data-action="skipped" data-id="${jobId}" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm font-medium">Skip</button>
@@ -125,6 +126,7 @@ export function renderList({ state, el }) {
           <div class="mt-1 text-xs text-slate-500 flex flex-wrap gap-2">
             <span>First seen: ${job.first_seen_at || '-'}</span>
             <span>Last seen: ${job.last_seen_at || '-'}</span>
+            ${job.llm_review_state === 'pending' ? `<span>LLM requested: ${formatRunTimestamp(job.llm_review_updated_at)}</span>` : ''}
             <span>Dedup: ${job.dedup_reason || '-'}</span>
           </div>
           ${(state.stage === 'filtered' || job.status === 'filtered') ? `

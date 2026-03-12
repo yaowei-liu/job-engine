@@ -18,7 +18,7 @@
         <label class="text-xs text-slate-600 inline-flex items-center gap-1">
           LLM mode
           <select id="llm-mode" class="px-2 py-1 rounded-md border border-slate-200 text-xs bg-white">
-            <option value="auto" selected>Auto</option>
+            <option value="auto" selected>Auto (manual uses realtime)</option>
             <option value="realtime">Force realtime</option>
             <option value="batch">Force batch</option>
           </select>
@@ -98,6 +98,9 @@
       <div class="flex flex-wrap items-center gap-2">
         <button data-stage="inbox" class="stage-btn stage-chip-active px-3 py-1.5 rounded-full border border-slate-200 text-sm font-medium">
           Inbox <span id="count-inbox" class="ml-1 text-xs opacity-90">0</span>
+        </button>
+        <button data-stage="pending_llm" class="stage-btn px-3 py-1.5 rounded-full border border-slate-200 bg-white text-violet-700 text-sm font-medium">
+          LLM Pending <span id="count-pending-llm" class="ml-1 text-xs opacity-75">0</span>
         </button>
         <button data-stage="approved" class="stage-btn px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium">
           Approved <span id="count-approved" class="ml-1 text-xs opacity-75">0</span>

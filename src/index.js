@@ -26,8 +26,7 @@ const {
 const { filterJobsByFreshness } = require('./lib/freshness');
 const { getSerpApiRunBudget, recordUsage } = require('./lib/serpapiBudget');
 const { addJobEvent, createRun, evaluateJobFit, finalizeRun, ingestJob, normalizeJob } = require('./lib/ingestion');
-const { pollAndReconcileBatches, flushBatchForRun } = require('./lib/llmFit');
-const { evaluateDeterministicFit } = require('./lib/qualityGate');
+const { flushBatchForRun } = require('./lib/llmFit');
 const { loadProfileConfig } = require('./lib/profileConfig');
 
 const app = express();
@@ -128,8 +127,8 @@ function buildQualityOptionsForRun(llmMode = 'auto') {
       maxPerRun: LLM_MAX_PER_RUN,
       timeoutMs: LLM_TIMEOUT_MS,
       model: LLM_MODEL,
-      mode: llmMode,
-      batchEnabled: LLM_BATCH_ENABLED,
+      mode: 'realtime',
+      batchEnabled: false,
       batchThreshold: LLM_BATCH_THRESHOLD,
       batchRealtimeFallbackCount: LLM_BATCH_REALTIME_FALLBACK_COUNT,
       batchModel: LLM_BATCH_MODEL,
@@ -139,32 +138,15 @@ function buildQualityOptionsForRun(llmMode = 'auto') {
 }
 
 function clampLlmMode(value = 'auto') {
-  const mode = String(value || 'auto').toLowerCase();
-  if (['auto', 'realtime', 'batch'].includes(mode)) return mode;
-  return 'auto';
+  void value;
+  return 'realtime';
 }
 
 function assignLlmModes(jobs = [], qualityOptions = {}, llmMode = 'auto') {
-  const mode = clampLlmMode(llmMode);
+  void qualityOptions;
+  void llmMode;
   if (!jobs.length) return [];
-  const out = jobs.map((job) => ({ ...job, __llm_mode: mode === 'auto' ? 'realtime' : mode }));
-  if (mode !== 'auto') return out;
-  const llmEnabled = String(qualityOptions?.llm?.enabled || 'false').toLowerCase() === 'true';
-  const batchEnabled = !!qualityOptions?.llm?.batchEnabled;
-  if (!llmEnabled || !batchEnabled) return out;
-
-  const threshold = Math.max(1, parseInt(String(qualityOptions?.llm?.batchThreshold || 20), 10));
-  const realtimeFallback = Math.max(0, parseInt(String(qualityOptions?.llm?.batchRealtimeFallbackCount || 5), 10));
-  const borderlineIndexes = [];
-  for (let i = 0; i < out.length; i += 1) {
-    const fit = evaluateDeterministicFit(normalizeJob(out[i]), profile, qualityOptions);
-    if (fit.needsLLM) borderlineIndexes.push(i);
-  }
-  if (borderlineIndexes.length < threshold) return out;
-  borderlineIndexes.forEach((idx, pos) => {
-    out[idx].__llm_mode = pos < realtimeFallback ? 'realtime' : 'batch';
-  });
-  return out;
+  return jobs.map((job) => ({ ...job, __llm_mode: 'realtime' }));
 }
 
 function isTorontoOrRemote(location) {
@@ -1130,8 +1112,6 @@ const BIGTECH_FETCH_INTERVAL = BIGTECH_FETCH_INTERVAL_MIN * 60 * 1000;
 let scheduled = null;
 let scheduledBigTech = null;
 let scheduledSerpApi = null;
-let scheduledLlmBatchPoll = null;
-
 async function startScheduler() {
   if (RUN_ON_STARTUP) {
     runFetcher('startup').catch((err) => console.error('[Scheduler] startup run failed:', err.message));
@@ -1153,14 +1133,6 @@ async function startScheduler() {
   scheduledBigTech = setInterval(() => {
     runBigTechFetcher('scheduler_bigtech').catch((err) => console.error('[BigTech] scheduled run failed:', err.message));
   }, BIGTECH_FETCH_INTERVAL);
-
-  if (LLM_BATCH_ENABLED) {
-    scheduledLlmBatchPoll = setInterval(() => {
-      pollAndReconcileBatches({
-        options: { llmAdmitThreshold: QUALITY_LLM_ADMIT_THRESHOLD },
-      }).catch((err) => console.error('[LLM Batch] poll failed:', err.message));
-    }, Math.max(10, LLM_BATCH_POLL_INTERVAL_SEC) * 1000);
-  }
 
   console.log(`[Scheduler] Next core fetch in ${FETCH_INTERVAL / 60000} minutes`);
   console.log(`[SerpAPI] Next serpapi fetch in ${SERPAPI_FETCH_INTERVAL / 60000} minutes`);
