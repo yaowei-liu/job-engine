@@ -51,6 +51,16 @@
           <span id="run-status" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">No data</span>
         </div>
         <p id="run-summary" class="text-sm text-slate-600 mt-2">Waiting for run data...</p>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <div class="rounded-lg bg-slate-50 px-3 py-2">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Time Last Scan</p>
+            <p id="run-last-scan" class="mt-1 text-sm text-slate-700">-</p>
+          </div>
+          <div class="rounded-lg bg-slate-50 px-3 py-2">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">New Qualifying Jobs</p>
+            <p id="run-new-qualifying" class="mt-1 text-sm text-slate-700">0</p>
+          </div>
+        </div>
         <p id="run-sources" class="text-xs text-slate-500 mt-1">Sources used: -</p>
         <p id="run-quality-hints" class="text-xs text-slate-500 mt-1">Quality diagnostics will appear after a run.</p>
         <div id="core-progress" class="mt-3">

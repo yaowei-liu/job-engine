@@ -324,6 +324,7 @@ async function runPipeline({
   const runQualityOptions = qualityOptions || {};
   const qualitySummary = {
     admittedToInbox: 0,
+    newAdmittedToInbox: 0,
     filteredOut: 0,
     llmUsed: 0,
     hardExclusionCount: 0,
@@ -439,6 +440,7 @@ async function runPipeline({
         }
         if (result.admittedToInbox) qualitySummary.admittedToInbox += 1;
         else qualitySummary.filteredOut += 1;
+        if (!result.deduped && result.admittedToInbox) qualitySummary.newAdmittedToInbox += 1;
         if (result.llmUsed) qualitySummary.llmUsed += 1;
         bumpQualityReasonStats(qualitySummary, result.reasonCodes || []);
         if (result.llmEligible) {
