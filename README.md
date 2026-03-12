@@ -24,6 +24,25 @@ Open:
 - UI: `http://localhost:3030/`
 - Health: `GET /health`
 
+## Deploy
+
+For a fresh VM deploy, use the checked-in Docker setup:
+
+```bash
+cp .env.example .env
+mkdir -p data
+docker compose up -d --build
+```
+
+Detailed VM steps: `docs/deploy-vm.md`
+
+## CI/CD
+
+- CI runs on every pull request, every push to `main`, and manual dispatch.
+- CI installs dependencies, runs `npm run lint`, runs `npm test`, and verifies the Docker image builds cleanly.
+- CD runs only after the `CI` workflow succeeds for a push to `main`, or when triggered manually.
+- CD deploys to the remote VM over SSH and waits for `GET /health` to return success before marking the job green.
+
 ## Configuration
 
 Primary config file: `config/sources.json`.
