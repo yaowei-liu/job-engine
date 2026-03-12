@@ -12,6 +12,19 @@ export function renderStageButtons({ state, el, stageCopy }) {
   el.countFiltered.textContent = state.stageCounts.filtered;
 }
 
+function formatRunTimestamp(value) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsed);
+}
+
 function parseHits(value) {
   try {
     return value ? JSON.parse(value) : [];
@@ -190,7 +203,15 @@ export function renderRunSummary({ run, el }) {
     : Object.keys(run.summary?.sources || {});
   const resurfaced = totals.resurfaced || 0;
   const queuedText = llm.batchQueued ? `, batch queued ${llm.batchQueued}` : '';
+  const lastScanAt = run.finishedAt || run.summary?.finishedAt || run.startedAt || run.summary?.startedAt || null;
+  const newQualifying = Number(quality.newAdmittedToInbox) || 0;
   el.runSummary.textContent = `Run #${run.id} (${run.trigger}): fetched ${totals.fetched || 0}, inserted ${totals.inserted || 0}, deduped ${totals.deduped || 0}, resurfaced ${resurfaced}, failed ${totals.failed || 0}${queuedText}.`;
+  if (el.runLastScan) {
+    el.runLastScan.textContent = formatRunTimestamp(lastScanAt);
+  }
+  if (el.runNewQualifying) {
+    el.runNewQualifying.textContent = String(newQualifying);
+  }
   const hard = quality.hardExclusionCount || 0;
   const loc = quality.locationMismatchCount || 0;
   const llmEligible = quality.borderlineSentToLlmCount || 0;

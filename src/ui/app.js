@@ -43,6 +43,8 @@ const el = {
   nextPage: document.getElementById('next-page'),
   runStatus: document.getElementById('run-status'),
   runSummary: document.getElementById('run-summary'),
+  runLastScan: document.getElementById('run-last-scan'),
+  runNewQualifying: document.getElementById('run-new-qualifying'),
   runSources: document.getElementById('run-sources'),
   runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
