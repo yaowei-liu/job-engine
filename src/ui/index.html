@@ -61,11 +61,21 @@
             <p id="run-new-qualifying" class="mt-1 text-sm text-slate-700">0</p>
           </div>
         </div>
+        <div id="run-activity" class="hidden mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+          <div class="flex items-center gap-2">
+            <span class="run-activity-dot"></span>
+            <p id="run-activity-text" class="text-sm font-medium text-sky-900">Ingestion running</p>
+          </div>
+          <p id="run-activity-subtext" class="mt-1 text-xs text-sky-800">Preparing run status...</p>
+        </div>
         <p id="run-sources" class="text-xs text-slate-500 mt-1">Sources used: -</p>
         <p id="run-quality-hints" class="text-xs text-slate-500 mt-1">Quality diagnostics will appear after a run.</p>
         <div id="core-progress" class="mt-3">
           <div class="flex items-center justify-between text-xs text-slate-600">
-            <span class="font-medium">Core ingestion</span>
+            <div class="flex items-center gap-2">
+              <span class="font-medium">Core ingestion</span>
+              <span id="core-progress-phase" class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600">Idle</span>
+            </div>
             <span id="core-progress-meta">0%</span>
           </div>
           <div class="mt-1 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
@@ -75,7 +85,10 @@
         </div>
         <div id="llm-progress" class="mt-3">
           <div class="flex items-center justify-between text-xs text-slate-600">
-            <span class="font-medium">LLM processing</span>
+            <div class="flex items-center gap-2">
+              <span class="font-medium">LLM processing</span>
+              <span id="llm-progress-phase" class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600">Idle</span>
+            </div>
             <span id="llm-progress-meta">0%</span>
           </div>
           <div class="mt-1 h-2 w-full rounded-full bg-slate-200 overflow-hidden">

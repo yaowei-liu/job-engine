@@ -13,6 +13,72 @@ export function renderStageButtons({ state, el, stageCopy }) {
   el.countFiltered.textContent = state.stageCounts.filtered;
 }
 
+function setPhaseBadge(node, { text, tone }) {
+  if (!node) return;
+  const toneClass = tone === 'active'
+    ? 'bg-sky-100 text-sky-700'
+    : tone === 'done'
+      ? 'bg-emerald-100 text-emerald-700'
+      : 'bg-slate-100 text-slate-600';
+  node.textContent = text;
+  node.className = `rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${toneClass}`;
+}
+
+function getCorePhaseLabel(core = {}, status = 'idle') {
+  if (status === 'running') {
+    if (core.phase === 'fetching') return { text: 'Fetch', tone: 'active' };
+    if (core.phase === 'processing') return { text: 'Process', tone: 'active' };
+    return { text: 'Running', tone: 'active' };
+  }
+  if (status === 'success' || status === 'partial') return { text: 'Done', tone: 'done' };
+  if (status === 'failed') return { text: 'Failed', tone: 'idle' };
+  return { text: 'Idle', tone: 'idle' };
+}
+
+function getLlmPhaseLabel({ llm = {}, status = 'idle' } = {}) {
+  const eligible = Number(llm.eligible) || 0;
+  const inFlight = Number(llm.inFlight) || 0;
+  if (status === 'running') {
+    if (eligible === 0) return { text: 'Scanning', tone: 'active' };
+    if (inFlight > 0) return { text: 'Settle', tone: 'active' };
+    return { text: 'Classify', tone: 'active' };
+  }
+  if (status === 'success' || status === 'partial') {
+    return eligible > 0 ? { text: 'Done', tone: 'done' } : { text: 'Skipped', tone: 'idle' };
+  }
+  if (status === 'failed') return { text: 'Failed', tone: 'idle' };
+  return { text: 'Idle', tone: 'idle' };
+}
+
+export function renderRunActivity({ progress, el }) {
+  if (!el.runActivity || !el.runActivityText || !el.runActivitySubtext) return;
+  const status = progress?.status || 'idle';
+  const core = progress?.core || {};
+  const llm = progress?.llm || {};
+  const totals = progress?.totals || {};
+  const trigger = progress?.trigger || 'manual';
+
+  if (status !== 'running') {
+    el.runActivity.classList.add('hidden');
+    return;
+  }
+
+  el.runActivity.classList.remove('hidden');
+  el.runActivityText.textContent = `Ingestion running now`;
+
+  if (core.phase === 'fetching') {
+    el.runActivitySubtext.textContent = `Stage: fetch sources ${Number(core.completedSources) || 0}/${Number(core.totalSources) || 0}${core.activeSource ? `, next ${core.activeSource}` : ''}. Trigger: ${trigger}.`;
+    return;
+  }
+
+  if ((Number(llm.inFlight) || 0) > 0) {
+    el.runActivitySubtext.textContent = `Stage: LLM settle. Processed ${Number(core.processedJobs) || 0}/${Number(totals.fetched) || 0}; in-flight ${Number(llm.inFlight) || 0}. Trigger: ${trigger}.`;
+    return;
+  }
+
+  el.runActivitySubtext.textContent = `Stage: process jobs. Processed ${Number(core.processedJobs) || 0}/${Number(totals.fetched) || 0}; LLM eligible ${Number(llm.eligible) || 0}. Trigger: ${trigger}.`;
+}
+
 function formatRunTimestamp(value) {
   if (!value) return '-';
   const parsed = new Date(value);
@@ -193,9 +259,20 @@ export function syncListAfterRemoval({ state, el, removedId }) {
 }
 
 export function renderRunSummary({ run, el }) {
-  if (!run) return;
+  if (!run) {
+    renderRunActivity({ progress: { status: 'idle' }, el });
+    return;
+  }
   el.runStatus.textContent = run.status;
-  el.runStatus.className = `text-xs px-2 py-1 rounded-full ${run.status === 'success' ? 'bg-emerald-100 text-emerald-700' : run.status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`;
+  el.runStatus.className = `text-xs px-2 py-1 rounded-full ${
+    run.status === 'success'
+      ? 'bg-emerald-100 text-emerald-700'
+      : run.status === 'partial'
+        ? 'bg-amber-100 text-amber-700'
+        : run.status === 'running'
+          ? 'bg-sky-100 text-sky-700'
+          : 'bg-rose-100 text-rose-700'
+  }`;
   const totals = run.summary?.totals || {};
   const quality = run.summary?.quality || {};
   const llm = run.summary?.llm || {};
@@ -227,63 +304,88 @@ export function renderRunSummary({ run, el }) {
   if (el.runWarnings) {
     el.runWarnings.textContent = warnings.length ? `Warnings: ${warnings.slice(0, 5).join(' | ')}` : '';
   }
-  renderCoreProgress({
-    progress: {
-      status: run.status,
-      totals: totals,
+  const progress = {
+    status: run.status,
+    trigger: run.trigger,
+    totals,
+    core: run.summary?.core || {
+      processedJobs: (Number(totals.inserted) || 0)
+        + (Number(totals.deduped) || 0)
+        + (Number(totals.failed) || 0)
+        + (Number(totals.skipped) || 0),
+      percent: (run.status === 'success' || run.status === 'partial' || run.status === 'failed') && (Number(totals.fetched) || 0) > 0
+        ? 100
+        : 0,
     },
-    el,
-  });
-  renderLlmProgress({
-    progress: {
-      status: run.status,
-      llm: run.summary?.llm || { completed: run.summary?.quality?.llmUsed || 0 },
-    },
-    el,
-  });
+    llm: run.summary?.llm || { completed: run.summary?.quality?.llmUsed || 0 },
+  };
+  renderRunActivity({ progress, el });
+  renderCoreProgress({ progress, el });
+  renderLlmProgress({ progress, el });
 }
 
 export function renderLlmProgress({ progress, el }) {
   const llm = progress?.llm || {};
+  const core = progress?.core || {};
+  const totals = progress?.totals || {};
   const eligible = Number(llm.eligible) || 0;
   const completed = Number(llm.completed) || 0;
   const skipped = Number(llm.skipped) || 0;
   const inFlight = Number(llm.inFlight) || 0;
-  const resolved = completed + skipped;
-  const percent = eligible > 0 ? Math.min(100, Math.round((resolved / eligible) * 100)) : 0;
+  const fetched = Math.max(0, Number(totals.fetched) || 0);
+  const processed = Math.max(0, Number(core.processedJobs) || 0);
+  const settled = Math.max(0, processed - Math.max(0, eligible - (completed + skipped)));
+  const percent = Math.max(
+    0,
+    Math.min(
+      100,
+      Number.isFinite(Number(llm.percent))
+        ? Number(llm.percent)
+        : (fetched > 0 ? Math.round((settled / fetched) * 100) : 0)
+    )
+  );
   const status = progress?.status || 'idle';
+  setPhaseBadge(el.llmProgressPhase, getLlmPhaseLabel({ llm, status }));
 
   el.llmProgressMeta.textContent = `${percent}%`;
   el.llmProgressBar.style.width = `${percent}%`;
 
   if (status === 'running') {
-    el.llmProgressDetail.textContent = `Completed ${completed}/${eligible} eligible, skipped ${skipped}, in-flight ${inFlight}.`;
+    el.llmProgressDetail.textContent = `Settled ${settled}/${fetched} fetched jobs; eligible ${eligible}, completed ${completed}, skipped ${skipped}, in-flight ${inFlight}.`;
     return;
   }
-  if (!eligible && !completed && !skipped) {
+  if (!fetched && !eligible && !completed && !skipped) {
     el.llmProgressDetail.textContent = 'No LLM-eligible jobs in this run.';
     return;
   }
-  el.llmProgressDetail.textContent = `Run done: completed ${completed}/${eligible} eligible, skipped ${skipped}.`;
+  if (!eligible) {
+    el.llmProgressDetail.textContent = 'Run done: no LLM-eligible jobs in this run.';
+    return;
+  }
+  el.llmProgressDetail.textContent = `Run done: completed ${completed}/${eligible} eligible, skipped ${skipped}, remaining ${inFlight}.`;
 }
 
 export function renderCoreProgress({ progress, el }) {
+  const core = progress?.core || {};
   const totals = progress?.totals || {};
   const fetched = Math.max(0, Number(totals.fetched) || 0);
-  const processed = Math.max(
+  const processed = Math.max(0, Number(core.processedJobs) || 0);
+  const fallbackPercent = fetched > 0 ? Math.round((processed / fetched) * 100) : 0;
+  const percent = Math.max(
     0,
-    (Number(totals.inserted) || 0)
-      + (Number(totals.deduped) || 0)
-      + (Number(totals.failed) || 0)
-      + (Number(totals.skipped) || 0)
+    Math.min(100, Number.isFinite(Number(core.percent)) ? Number(core.percent) : fallbackPercent)
   );
-  const percent = fetched > 0 ? Math.min(100, Math.round((processed / fetched) * 100)) : 0;
   const status = progress?.status || 'idle';
+  setPhaseBadge(el.coreProgressPhase, getCorePhaseLabel(core, status));
 
   el.coreProgressMeta.textContent = `${percent}%`;
   el.coreProgressBar.style.width = `${percent}%`;
 
   if (status === 'running') {
+    if (core.phase === 'fetching') {
+      el.coreProgressDetail.textContent = `Fetching sources ${Number(core.completedSources) || 0}/${Number(core.totalSources) || 0}${core.activeSource ? `, next ${core.activeSource}` : ''}.`;
+      return;
+    }
     el.coreProgressDetail.textContent = `Processed ${processed}/${fetched} fetched jobs.`;
     return;
   }

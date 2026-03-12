@@ -14,6 +14,7 @@ import {
   renderSelectedCard,
   renderCoreProgress,
   renderLlmProgress,
+  renderRunActivity,
   renderRunSummary,
   renderStageButtons,
   syncListAfterRemoval,
@@ -45,16 +46,21 @@ const el = {
   runSummary: document.getElementById('run-summary'),
   runLastScan: document.getElementById('run-last-scan'),
   runNewQualifying: document.getElementById('run-new-qualifying'),
+  runActivity: document.getElementById('run-activity'),
+  runActivityText: document.getElementById('run-activity-text'),
+  runActivitySubtext: document.getElementById('run-activity-subtext'),
   runSources: document.getElementById('run-sources'),
   runQualityHints: document.getElementById('run-quality-hints'),
   runErrors: document.getElementById('run-errors'),
   runWarnings: document.getElementById('run-warnings'),
   coreProgress: document.getElementById('core-progress'),
   coreProgressMeta: document.getElementById('core-progress-meta'),
+  coreProgressPhase: document.getElementById('core-progress-phase'),
   coreProgressBar: document.getElementById('core-progress-bar'),
   coreProgressDetail: document.getElementById('core-progress-detail'),
   llmProgress: document.getElementById('llm-progress'),
   llmProgressMeta: document.getElementById('llm-progress-meta'),
+  llmProgressPhase: document.getElementById('llm-progress-phase'),
   llmProgressBar: document.getElementById('llm-progress-bar'),
   llmProgressDetail: document.getElementById('llm-progress-detail'),
   provenance: document.getElementById('provenance'),
@@ -86,6 +92,22 @@ function showError(message) {
 function clearError() {
   el.errorBanner.classList.add('hidden');
   el.errorBanner.textContent = '';
+}
+
+function syncRunControls(run) {
+  const isRunning = run?.status === 'running';
+  const label = String(run?.summary?.label || run?.label || '').toLowerCase();
+  const isCoreRun = isRunning && label === 'core';
+  const isCleanupRun = isRunning && label === 'cleanup_inbox';
+
+  if (el.runScan) {
+    el.runScan.disabled = isCoreRun;
+    el.runScan.textContent = isCoreRun ? 'Ingestion Running...' : 'Run Ingestion';
+  }
+  if (el.cleanupInbox) {
+    el.cleanupInbox.disabled = isCleanupRun;
+    el.cleanupInbox.textContent = isCleanupRun ? 'Cleanup Running...' : 'Cleanup Inbox';
+  }
 }
 
 function applyQueryStateToUrl() {
@@ -147,8 +169,11 @@ function buildFilterParams(stage = state.stage) {
 async function loadRuns() {
   try {
     const run = await fetchLatestRun();
+    syncRunControls(run);
     renderRunSummary({ run, el });
   } catch {
+    syncRunControls(null);
+    renderRunSummary({ run: null, el });
     // keep silent, job list still usable
   }
 }
@@ -298,6 +323,7 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
   renderLlmProgress({
     progress: {
       status: 'running',
+      trigger: expectedTrigger,
       llm: { eligible: 0, completed: 0, skipped: 0, inFlight: 0 },
     },
     el,
@@ -305,7 +331,19 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
   renderCoreProgress({
     progress: {
       status: 'running',
+      trigger: expectedTrigger,
+      core: { phase: 'fetching', totalSources: 0, completedSources: 0, activeSource: null },
       totals: { fetched: 0, inserted: 0, deduped: 0, failed: 0, skipped: 0 },
+    },
+    el,
+  });
+  renderRunActivity({
+    progress: {
+      status: 'running',
+      trigger: expectedTrigger,
+      core: { phase: 'fetching', totalSources: 0, completedSources: 0, activeSource: null, processedJobs: 0 },
+      llm: { eligible: 0, completed: 0, skipped: 0, inFlight: 0 },
+      totals: { fetched: 0 },
     },
     el,
   });
@@ -321,6 +359,7 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
 
       if (activeRunId) {
         const progress = await fetchRunProgress(activeRunId);
+        renderRunActivity({ progress, el });
         renderCoreProgress({ progress, el });
         renderLlmProgress({ progress, el });
 
@@ -335,6 +374,7 @@ async function monitorRunWhilePending({ requestPromise, expectedTrigger }) {
       await sleep(700);
       try {
         const finalProgress = await fetchRunProgress(activeRunId);
+        renderRunActivity({ progress: finalProgress, el });
         renderCoreProgress({ progress: finalProgress, el });
         renderLlmProgress({ progress: finalProgress, el });
       } catch {
@@ -394,6 +434,7 @@ el.runScan.addEventListener('click', async () => {
   const requestedMode = el.llmMode?.value || 'auto';
   const manualMode = requestedMode === 'auto' ? 'realtime' : requestedMode;
   const requestPromise = triggerIngestionRun(manualMode, selectedSources);
+  syncRunControls({ status: 'running', summary: { label: 'core' } });
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual',
@@ -421,6 +462,7 @@ el.cleanupInbox.addEventListener('click', async () => {
   const requestedMode = el.llmMode?.value || 'auto';
   const manualMode = requestedMode === 'auto' ? 'realtime' : requestedMode;
   const requestPromise = triggerInboxCleanupRun(manualMode);
+  syncRunControls({ status: 'running', summary: { label: 'cleanup_inbox' } });
   const monitorPromise = monitorRunWhilePending({
     requestPromise,
     expectedTrigger: 'manual_cleanup',
