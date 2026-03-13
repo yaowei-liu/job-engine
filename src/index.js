@@ -203,6 +203,28 @@ let isCleanupRunning = false;
 const runProgress = new Map();
 const RUN_PROGRESS_TTL_MS = 5 * 60 * 1000;
 
+function getProcessedTotal(totals = {}) {
+  return Math.max(
+    0,
+    (Number(totals.inserted) || 0)
+      + (Number(totals.deduped) || 0)
+      + (Number(totals.failed) || 0)
+      + (Number(totals.skipped) || 0)
+  );
+}
+
+function initCoreProgress() {
+  return {
+    phase: 'idle',
+    totalSources: 0,
+    completedSources: 0,
+    totalJobs: 0,
+    processedJobs: 0,
+    activeSource: null,
+    percent: 0,
+  };
+}
+
 function initLlmProgress() {
   return {
     eligible: 0,
@@ -214,14 +236,70 @@ function initLlmProgress() {
   };
 }
 
-function normalizeLlmProgress(input = {}) {
+function normalizeCoreProgress(input = {}, { totals = {}, status = 'idle', previous = null } = {}) {
+  const totalSources = Math.max(0, Number(input.totalSources) || 0);
+  const completedSources = Math.min(totalSources, Math.max(0, Number(input.completedSources) || 0));
+  const totalJobs = Math.max(0, Number(input.totalJobs) || Math.max(0, Number(totals.fetched) || 0));
+  const processedJobs = Math.min(totalJobs || Number.MAX_SAFE_INTEGER, Math.max(
+    0,
+    Number(input.processedJobs) || getProcessedTotal(totals)
+  ));
+  const activeSource = input.activeSource ? String(input.activeSource) : null;
+
+  let phase = 'idle';
+  let percent = 0;
+
+  if (status === 'running') {
+    if (totalSources > 0 && completedSources < totalSources) {
+      phase = 'fetching';
+      percent = Math.round((completedSources / totalSources) * 25);
+    } else if (totalJobs > 0) {
+      phase = 'processing';
+      percent = 25 + Math.round((processedJobs / totalJobs) * 75);
+    } else if (totalSources > 0) {
+      phase = 'processing';
+      percent = 100;
+    } else {
+      phase = 'running';
+      percent = 0;
+    }
+    percent = Math.max(previous?.percent || 0, percent);
+  } else if (status === 'idle') {
+    phase = 'idle';
+  } else if (totalSources > 0 || totalJobs > 0 || processedJobs > 0) {
+    phase = 'done';
+    percent = 100;
+  }
+
+  return {
+    phase,
+    totalSources,
+    completedSources,
+    totalJobs,
+    processedJobs,
+    activeSource,
+    percent,
+  };
+}
+
+function normalizeLlmProgress(input = {}, { totals = {}, status = 'idle', previous = null } = {}) {
   const eligible = Math.max(0, Number(input.eligible) || 0);
   const attempted = Math.max(0, Number(input.attempted) || 0);
   const completed = Math.max(0, Number(input.completed) || 0);
   const skipped = Math.max(0, Number(input.skipped) || 0);
   const resolved = completed + skipped;
   const inFlight = Math.max(0, attempted - resolved);
-  const percent = eligible > 0 ? Math.min(100, Math.round((resolved / eligible) * 100)) : 0;
+  const fetched = Math.max(0, Number(totals.fetched) || 0);
+  const processed = Math.min(fetched || Number.MAX_SAFE_INTEGER, getProcessedTotal(totals));
+  const unsettledEligible = Math.max(0, eligible - resolved);
+  const settledJobs = Math.max(0, processed - unsettledEligible);
+  let percent = fetched > 0 ? Math.min(100, Math.round((settledJobs / fetched) * 100)) : 0;
+
+  if (status === 'running') {
+    percent = Math.max(previous?.percent || 0, percent);
+  } else if (status !== 'idle' && fetched > 0 && unsettledEligible === 0) {
+    percent = 100;
+  }
 
   return {
     eligible,
@@ -249,7 +327,16 @@ function bumpQualityReasonStats(qualitySummary, reasonCodes = []) {
 function setRunProgress(runId, values = {}) {
   const current = runProgress.get(runId) || { runId };
   const merged = { ...current, ...values };
-  merged.llm = normalizeLlmProgress(merged.llm || {});
+  merged.core = normalizeCoreProgress(merged.core || {}, {
+    totals: merged.totals || {},
+    status: merged.status || 'idle',
+    previous: current.core || null,
+  });
+  merged.llm = normalizeLlmProgress(merged.llm || {}, {
+    totals: merged.totals || {},
+    status: merged.status || 'idle',
+    previous: current.llm || null,
+  });
   merged.updatedAt = new Date().toISOString();
   runProgress.set(runId, merged);
 }
@@ -261,6 +348,7 @@ function bootstrapRunProgress(runId, { trigger, label, summary }) {
     label,
     status: 'running',
     totals: { ...(summary?.totals || {}) },
+    core: { ...(summary?.core || initCoreProgress()) },
     quality: { ...(summary?.quality || {}) },
     llm: { ...(summary?.llm || initLlmProgress()) },
     startedAt: summary?.startedAt || new Date().toISOString(),
@@ -273,6 +361,7 @@ function syncRunProgress(runId, summary, status = 'running') {
   setRunProgress(runId, {
     status,
     totals: { ...(summary?.totals || {}) },
+    core: { ...(summary?.core || initCoreProgress()) },
     quality: { ...(summary?.quality || {}) },
     llm: { ...(summary?.llm || initLlmProgress()) },
     finishedAt: summary?.finishedAt || null,
@@ -331,6 +420,12 @@ async function runPipeline({
       failed: 0,
       skipped: 0,
     },
+    core: {
+      ...initCoreProgress(),
+      phase: sourceTasks.length ? 'fetching' : 'processing',
+      totalSources: sourceTasks.length,
+      activeSource: sourceTasks[0]?.source || null,
+    },
     quality: qualitySummary,
     llm: initLlmProgress(),
     sources: {},
@@ -346,8 +441,14 @@ async function runPipeline({
           const payload = await task.fetch(runId);
           const jobs = Array.isArray(payload) ? payload : (Array.isArray(payload?.jobs) ? payload.jobs : []);
           const meta = Array.isArray(payload) ? null : (payload?.meta || null);
+          summary.core.completedSources += 1;
+          summary.core.activeSource = sourceTasks[summary.core.completedSources]?.source || null;
+          syncRunProgress(runId, summary, 'running');
           return { source: task.source, jobs, meta, error: null };
         } catch (err) {
+          summary.core.completedSources += 1;
+          summary.core.activeSource = sourceTasks[summary.core.completedSources]?.source || null;
+          syncRunProgress(runId, summary, 'running');
           return { source: task.source, jobs: [], meta: null, error: err.message };
         }
       })
@@ -396,6 +497,11 @@ async function runPipeline({
     syncRunProgress(runId, summary, 'running');
 
     const jobs = assignLlmModes(transform(sourceResults.flatMap((r) => r.jobs)), qualityOptions, llmMode);
+    summary.core.phase = 'processing';
+    summary.core.totalJobs = summary.totals.fetched;
+    summary.core.processedJobs = 0;
+    summary.core.activeSource = null;
+    syncRunProgress(runId, summary, 'running');
 
     for (const job of jobs) {
       const source = (job.source || 'unknown').toLowerCase();
@@ -417,6 +523,7 @@ async function runPipeline({
         }, runId);
         if (result.skipped) {
           summary.totals.skipped += 1;
+          summary.core.processedJobs = getProcessedTotal(summary.totals);
           syncRunProgress(runId, summary, 'running');
           continue;
         }
@@ -444,17 +551,21 @@ async function runPipeline({
           summary.totals.inserted += 1;
           summary.sources[source].inserted += 1;
         }
+        summary.core.processedJobs = getProcessedTotal(summary.totals);
         syncRunProgress(runId, summary, 'running');
       } catch (err) {
         summary.totals.failed += 1;
         summary.sources[source].failed += 1;
         summary.errors.push(`${source}: ${err.message}`);
+        summary.core.processedJobs = getProcessedTotal(summary.totals);
         syncRunProgress(runId, summary, 'running');
       }
     }
 
     summary.finishedAt = new Date().toISOString();
     summary.durationMs = Date.now() - start;
+    summary.core.phase = 'done';
+    summary.core.processedJobs = getProcessedTotal(summary.totals);
 
     const batchFlush = await flushBatchForRun({ runId, options: runQualityOptions.llm || {} });
     if (batchFlush?.batchId) {
@@ -934,6 +1045,13 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
       kept: 0,
       filtered: 0,
     },
+    core: {
+      ...initCoreProgress(),
+      phase: 'processing',
+      totalSources: 1,
+      completedSources: 1,
+      activeSource: 'cleanup_inbox',
+    },
     quality: {
       admittedToInbox: 0,
       filteredOut: 0,
@@ -966,6 +1084,9 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
     );
     summary.totals.fetched = rows.length;
     summary.sources.cleanup_inbox.fetched = rows.length;
+    summary.core.totalJobs = rows.length;
+    summary.core.processedJobs = 0;
+    summary.core.activeSource = null;
     syncRunProgress(runId, summary, 'running');
 
     const withMode = assignLlmModes(rows.map((r) => ({ ...r })), qualityOptions, llmMode);
@@ -1019,6 +1140,7 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
 
         if (!update.changes) {
           summary.totals.skipped += 1;
+          summary.core.processedJobs = getProcessedTotal(summary.totals);
           syncRunProgress(runId, summary, 'running');
           continue;
         }
@@ -1059,17 +1181,21 @@ async function runInboxCleanup(triggerType = 'manual_cleanup', opts = {}) {
             llmUsed: !!fit.llmUsed,
           },
         });
+        summary.core.processedJobs = getProcessedTotal(summary.totals);
         syncRunProgress(runId, summary, 'running');
       } catch (err) {
         summary.totals.failed += 1;
         summary.sources.cleanup_inbox.failed += 1;
         summary.errors.push(`cleanup_inbox#${row.id}: ${err.message}`);
+        summary.core.processedJobs = getProcessedTotal(summary.totals);
         syncRunProgress(runId, summary, 'running');
       }
     }
 
     summary.finishedAt = new Date().toISOString();
     summary.durationMs = Date.now() - start;
+    summary.core.phase = 'done';
+    summary.core.processedJobs = getProcessedTotal(summary.totals);
     const batchFlush = await flushBatchForRun({ runId, options: qualityOptions.llm || {} });
     if (batchFlush?.batchId) {
       summary.llm.batchSubmitted = batchFlush.submitted || 0;
@@ -1270,8 +1396,16 @@ async function startScheduler() {
       }
 
       const quality = summary.quality || {};
+      const core = normalizeCoreProgress(summary.core || {}, {
+        totals: summary.totals || {},
+        status: row.status,
+      });
       const llm = normalizeLlmProgress(
-        summary.llm || { completed: Number(quality.llmUsed) || 0 }
+        summary.llm || { completed: Number(quality.llmUsed) || 0 },
+        {
+          totals: summary.totals || {},
+          status: row.status,
+        }
       );
 
       return res.json({
@@ -1280,6 +1414,7 @@ async function startScheduler() {
         label: summary.label || 'unknown',
         status: row.status,
         totals: summary.totals || {},
+        core,
         quality,
         llm,
         startedAt: row.started_at,
